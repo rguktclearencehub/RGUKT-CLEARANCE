@@ -45,15 +45,15 @@ export default function FeeReceipt({ student, clearances, totalFeeDue, paymentRe
       </div>
 
       {/* Printable Receipt Area */}
-      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl p-3 sm:p-4 relative overflow-hidden print:shadow-none print:max-w-3xl print:p-8 mt-16 sm:mt-0 mb-8 sm:mb-0 shrink-0">
+      <div className="bg-white w-full max-w-2xl rounded-xl shadow-2xl p-2 sm:p-3 relative overflow-hidden print:shadow-none print:max-w-3xl print:p-6 mt-16 sm:mt-0 mb-8 sm:mb-0 shrink-0">
         
         {/* Background decorative elements */}
         <div className="absolute -top-32 -right-32 w-64 h-64 bg-green-50 rounded-full opacity-50 blur-3xl"></div>
         <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-blue-50 rounded-full opacity-50 blur-3xl"></div>
 
-        <div className="border-[4px] sm:border-[6px] border-double border-slate-200 p-3 sm:p-5 relative z-10 bg-white/50 backdrop-blur-sm rounded-xl">
+        <div className="border-[2px] sm:border-[4px] border-double border-slate-200 p-2 sm:p-4 relative z-10 bg-white/50 backdrop-blur-sm rounded-lg">
           
-          <div className="flex items-center justify-between mb-4 sm:mb-5 border-b border-slate-300 pb-3 sm:pb-4">
+          <div className="flex items-center justify-between mb-3 sm:mb-4 border-b border-slate-300 pb-2 sm:pb-3">
             <div className="w-10 h-10 sm:w-16 sm:h-16 shrink-0 flex items-center justify-center">
               <img src="/rgukt.png" alt="RGUKT Logo" className="w-full h-full object-contain" />
             </div>
@@ -72,13 +72,13 @@ export default function FeeReceipt({ student, clearances, totalFeeDue, paymentRe
             <div className="w-12 sm:w-20 shrink-0 hidden md:block"></div>
           </div>
 
-          <div className="text-center mb-4 sm:mb-5">
-            <h2 className="text-base sm:text-lg font-bold text-green-700 font-serif border-b-2 border-green-200 inline-block pb-1 px-4 sm:px-6">
+          <div className="text-center mb-3 sm:mb-4">
+            <h2 className="text-sm sm:text-base font-bold text-green-700 font-serif border-b-2 border-green-200 inline-block pb-1 px-4 sm:px-6">
               OFFICIAL FEE RECEIPT
             </h2>
           </div>
 
-          <div className="flex justify-between items-start text-xs sm:text-sm text-slate-700 mb-4 sm:mb-5">
+          <div className="flex justify-between items-start text-[10px] sm:text-xs text-slate-700 mb-3 sm:mb-4">
             <div>
               <p><span className="font-semibold text-slate-500 w-24 inline-block">Name:</span> <span className="font-bold text-slate-900">{student.name}</span></p>
               <p><span className="font-semibold text-slate-500 w-24 inline-block">Student ID:</span> <span className="font-bold text-slate-900">{student.studentId}</span></p>
@@ -92,41 +92,41 @@ export default function FeeReceipt({ student, clearances, totalFeeDue, paymentRe
             </div>
           </div>
 
-          <div className="mb-4 sm:mb-5 border border-slate-300 rounded-lg overflow-hidden">
-            <table className="w-full text-left text-xs sm:text-sm">
+          <div className="mb-3 sm:mb-4 border border-slate-300 rounded-lg overflow-hidden">
+            <table className="w-full text-left text-[10px] sm:text-xs">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-300">
                 <tr>
-                  <th className="py-2 px-3 font-bold">Department</th>
-                  <th className="py-2 px-3 font-bold text-right">Fee Due (₹)</th>
+                  <th className="py-1 px-2 font-bold">Department</th>
+                  <th className="py-1 px-2 font-bold text-right">Fee Due (₹)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {fees.map((f, idx) => (
                   <tr key={idx} className="bg-white">
-                    <td className="py-1.5 px-3 font-medium text-slate-700">{f.departmentName}</td>
-                    <td className="py-1.5 px-3 font-medium text-slate-900 text-right">₹{f.feeDue.toFixed(2)}</td>
+                    <td className="py-1 px-2 font-medium text-slate-700">{f.departmentName}</td>
+                    <td className="py-1 px-2 font-medium text-slate-900 text-right">₹{f.feeDue.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot className="bg-slate-50 border-t-2 border-slate-300">
                 <tr>
-                  <th className="py-2.5 px-3 font-bold text-slate-800 text-base">Total Amount Paid</th>
-                  <th className="py-2.5 px-3 font-bold text-green-700 text-right text-base">₹{totalFeeDue.toFixed(2)}</th>
+                  <th className="py-1.5 px-2 font-bold text-slate-800 text-sm">Total Amount Paid</th>
+                  <th className="py-1.5 px-2 font-bold text-green-700 text-right text-sm">₹{totalFeeDue.toFixed(2)}</th>
                 </tr>
               </tfoot>
             </table>
           </div>
 
-          <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4 sm:mb-6 text-center">
-            <p className="text-green-800 font-medium text-xs sm:text-sm">
+          <div className="bg-green-50 border border-green-200 rounded-md p-2 mb-3 sm:mb-4 text-center">
+            <p className="text-green-800 font-medium text-[10px] sm:text-xs">
               Payment successfully received and verified against Reference ID: 
-              <span className="block text-green-900 font-bold text-base mt-0.5 tracking-wider">{paymentReferenceId}</span>
+              <span className="block text-green-900 font-bold text-sm mt-0.5 tracking-wider">{paymentReferenceId}</span>
             </p>
           </div>
 
-          <div className="mt-4 sm:mt-6 text-center">
-            <div className="h-6 sm:h-10 flex items-end justify-center mb-1">
-              <span className="font-serif text-base sm:text-lg text-blue-900/60 italic transform -rotate-2 block">Accounts Verified</span>
+          <div className="mt-3 sm:mt-4 text-center">
+            <div className="h-4 sm:h-8 flex items-end justify-center mb-1">
+              <span className="font-serif text-xs sm:text-sm text-blue-900/60 italic transform -rotate-2 block">Accounts Verified</span>
             </div>
             <p className="font-bold text-slate-900 border-t border-slate-300 pt-1 w-40 text-center text-[10px] sm:text-xs mx-auto">
               Finance Office (FO)
