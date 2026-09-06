@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, EyeOff, FileCheck, ArrowRight } from 'lucide-react';
 import { auth, googleProvider, db } from '../firebase';
@@ -30,6 +30,24 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const userData = JSON.parse(storedUser);
+        if (userData.role === 'STUDENT') {
+          navigate('/student/dashboard', { replace: true });
+        } else if (userData.role === 'ADMIN') {
+          navigate('/admin/dashboard', { replace: true });
+        } else {
+          navigate('/department/dashboard', { replace: true });
+        }
+      } catch (e) {
+        console.error("Error parsing stored user", e);
+      }
+    }
+  }, [navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,11 +114,11 @@ export default function Login() {
       localStorage.setItem('user', JSON.stringify({ id: user.uid, ...userData }));
       
       if (userData.role === 'STUDENT') {
-        navigate('/student/dashboard');
+        navigate('/student/dashboard', { replace: true });
       } else if (userData.role === 'ADMIN') {
-        navigate('/admin/dashboard');
+        navigate('/admin/dashboard', { replace: true });
       } else {
-        navigate('/department/dashboard');
+        navigate('/department/dashboard', { replace: true });
       }
     } catch (err: any) {
       console.error(err);
@@ -157,11 +175,11 @@ export default function Login() {
       localStorage.setItem('user', JSON.stringify({ id: user.uid, ...userData }));
       
       if (userData.role === 'STUDENT') {
-        navigate('/student/dashboard');
+        navigate('/student/dashboard', { replace: true });
       } else if (userData.role === 'ADMIN') {
-        navigate('/admin/dashboard');
+        navigate('/admin/dashboard', { replace: true });
       } else {
-        navigate('/department/dashboard');
+        navigate('/department/dashboard', { replace: true });
       }
     } catch (err: any) {
       console.error(err);
