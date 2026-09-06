@@ -241,10 +241,7 @@ export default function DepartmentDashboard() {
         </nav>
         
         <div className="mt-8 px-4 space-y-2 border-t border-outline-variant/10 pt-4">
-          <a className="flex items-center gap-3 px-4 py-2 text-on-primary-container/70 font-label-md hover:bg-surface-variant/20 hover:text-surface-container-lowest transition-all duration-300 rounded-lg" href="#">
-            <Settings className="w-5 h-5" />
-            Settings
-          </a>
+
           <button onClick={logout} className="w-full flex items-center gap-3 px-4 py-2 text-on-primary-container/70 font-label-md hover:bg-surface-variant/20 hover:text-red-400 transition-all duration-300 rounded-lg">
             <LogOut className="w-5 h-5" />
             Logout
