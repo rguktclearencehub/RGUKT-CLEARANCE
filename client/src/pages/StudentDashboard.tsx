@@ -615,10 +615,67 @@ export default function StudentDashboard() {
           )}
 
           {activeTab === 'profile' && (
-            <div className="flex flex-col items-center justify-center h-[60vh] text-center bg-surface-container-lowest rounded-3xl border border-surface-variant shadow-sm p-10">
-              <User className="w-16 h-16 text-primary mb-4" />
-              <h2 className="font-headline-md text-2xl font-bold text-primary mb-2">Student Profile</h2>
-              <p className="font-body-md text-on-surface-variant">Your personal information and academic records will appear here.</p>
+            <div className="flex flex-col h-full bg-surface-container-lowest rounded-3xl border border-surface-variant shadow-sm p-6 lg:p-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="flex items-center gap-4 mb-8">
+                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <User className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <h2 className="font-headline-md text-2xl font-bold text-on-surface">Student Profile</h2>
+                  <p className="font-body-md text-on-surface-variant text-sm mt-1">Your personal information and academic details</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-surface rounded-2xl p-6 border border-surface-variant shadow-sm">
+                  <div className="w-24 h-24 bg-primary text-on-primary rounded-full flex items-center justify-center text-4xl font-bold mb-8 mx-auto shadow-md">
+                    {data.name?.charAt(0) || data.email?.charAt(0) || 'S'}
+                  </div>
+                  <div className="space-y-5 text-center sm:text-left">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center sm:border-b sm:border-surface-variant sm:pb-3">
+                      <p className="text-xs font-label-sm text-outline uppercase tracking-wider mb-1 sm:mb-0">Full Name</p>
+                      <p className="font-headline-sm text-lg font-bold text-primary">{data.name || data.email?.split('@')[0]}</p>
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center sm:border-b sm:border-surface-variant sm:pb-3">
+                      <p className="text-xs font-label-sm text-outline uppercase tracking-wider mb-1 sm:mb-0">Student ID</p>
+                      <p className="font-body-md text-on-surface-variant font-medium">{data.id}</p>
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center sm:border-b sm:border-surface-variant sm:pb-3">
+                      <p className="text-xs font-label-sm text-outline uppercase tracking-wider mb-1 sm:mb-0">Email Address</p>
+                      <p className="font-body-md text-on-surface-variant font-medium">{data.email}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="space-y-6">
+                  <div className="bg-surface rounded-2xl p-6 border border-surface-variant shadow-sm">
+                    <h3 className="font-headline-sm text-lg font-bold text-primary mb-4 border-b border-surface-variant pb-3">Academic Details</h3>
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-label-md text-outline">Program</span>
+                        <span className="font-bold text-primary">{data?.clearanceRequest?.programType || 'Not Registered'}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-label-md text-outline">Status</span>
+                        <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold">Active</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-label-md text-outline">Scholarship ID</span>
+                        <span className="font-bold text-primary">{data.scholarshipId || 'N/A'}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-primary-container text-on-primary-container rounded-2xl p-6 border border-primary-container/20 shadow-sm relative overflow-hidden">
+                    <div className="absolute right-0 top-0 w-32 h-32 bg-secondary/10 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
+                    <h3 className="font-headline-sm text-lg font-bold text-surface-container-lowest mb-2">Need to update your details?</h3>
+                    <p className="font-body-sm text-sm opacity-80 mb-4">Contact the academic section with valid proof to update your registered profile information.</p>
+                    <button className="bg-surface-container-lowest text-primary px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:scale-105 transition-transform duration-200">
+                      Contact Admin
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
