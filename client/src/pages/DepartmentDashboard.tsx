@@ -213,7 +213,7 @@ export default function DepartmentDashboard() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background text-on-background font-body-md antialiased">
+    <div className="flex min-h-screen text-on-background font-body-md antialiased">
       
       {/* SideNavBar Component */}
       <aside className="bg-primary-container h-full w-64 fixed left-0 top-0 rounded-r-3xl border-r border-outline-variant/10 shadow-xl flex flex-col py-8 z-50">
