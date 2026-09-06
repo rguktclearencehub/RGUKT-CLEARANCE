@@ -278,13 +278,6 @@ export default function StudentDashboard() {
             <User className="w-5 h-5" />
             Profile
           </button>
-          <button 
-            onClick={() => setActiveTab('documents')}
-            className={`w-full flex items-center gap-3 px-4 py-3 font-label-md transition-all duration-300 rounded-lg ${activeTab === 'documents' ? 'text-surface-container-lowest border-l-2 border-secondary-container bg-surface-variant/10 rounded-r-lg' : 'text-on-primary-container/70 hover:bg-surface-variant/20 hover:text-surface-container-lowest'}`}
-          >
-            <FileText className="w-5 h-5" />
-            Documents
-          </button>
         </nav>
         
         <div className="mt-auto px-4 space-y-2 border-t border-outline-variant/10 pt-4">
@@ -676,14 +669,6 @@ export default function StudentDashboard() {
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-
-          {activeTab === 'documents' && (
-            <div className="flex flex-col items-center justify-center h-[60vh] text-center bg-surface-container-lowest rounded-3xl border border-surface-variant shadow-sm p-10">
-              <FileText className="w-16 h-16 text-primary mb-4" />
-              <h2 className="font-headline-md text-2xl font-bold text-primary mb-2">My Documents</h2>
-              <p className="font-body-md text-on-surface-variant">Your generated No-Dues certificates and other files will appear here.</p>
             </div>
           )}
           </div>
