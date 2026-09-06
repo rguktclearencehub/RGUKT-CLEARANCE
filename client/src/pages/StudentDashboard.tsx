@@ -356,7 +356,7 @@ export default function StudentDashboard() {
                     const isRejected = dept?.status === 'REJECTED';
                     
                     return (
-                      <div key={deptName} className="flex items-center flex-1">
+                      <div key={deptName} className={`flex items-center ${index < currentDepartments.length - 1 ? 'flex-1' : ''}`}>
                         {/* Step Circle */}
                         <div className="flex flex-col items-center relative group">
                           <div className={`w-10 h-10 lg:w-12 lg:h-12 rounded-full flex items-center justify-center z-10 transition-all duration-300 border-[3px] shadow-sm group-hover:scale-110 shrink-0 ${
