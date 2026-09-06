@@ -422,13 +422,24 @@ export default function StudentDashboard() {
                 <div className="flex items-center gap-4">
                   <h3 className="font-headline-md text-2xl font-bold text-primary">Department Status</h3>
                   {request && request.totalFeeDue > 0 && (
-                    <button 
-                      onClick={() => setShowFeeBreakdown(true)}
-                      className="font-label-sm font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 transition-colors px-3 py-1 rounded-full border border-amber-300 flex items-center gap-1.5 shadow-sm cursor-pointer"
-                    >
-                      Total Dues: ₹{request.totalFeeDue}
-                      <span className="text-[10px] bg-amber-700 text-amber-100 px-1.5 rounded-full ml-1">View Details</span>
-                    </button>
+                    request.paymentReferenceId ? (
+                      <button 
+                        onClick={() => setShowFeeBreakdown(true)}
+                        className="font-label-sm font-bold text-green-700 bg-green-100 hover:bg-green-200 transition-colors px-3 py-1 rounded-full border border-green-300 flex items-center gap-1.5 shadow-sm cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        Fee Paid & Verified (Ref: {request.paymentReferenceId})
+                        <span className="text-[10px] bg-green-700 text-green-100 px-1.5 rounded-full ml-1">View Details</span>
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => setShowFeeBreakdown(true)}
+                        className="font-label-sm font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 transition-colors px-3 py-1 rounded-full border border-amber-300 flex items-center gap-1.5 shadow-sm cursor-pointer"
+                      >
+                        Total Dues: ₹{request.totalFeeDue}
+                        <span className="text-[10px] bg-amber-700 text-amber-100 px-1.5 rounded-full ml-1">View Details</span>
+                      </button>
+                    )
                   )}
                 </div>
                 {request && (
@@ -888,9 +899,16 @@ export default function StudentDashboard() {
               )}
             </div>
 
-            <div className="flex justify-between items-center p-4 bg-amber-50 rounded-xl border border-amber-200 mb-6">
-              <span className="font-bold text-amber-900">Total Due:</span>
-              <span className="text-xl font-bold text-amber-700">₹{data?.clearanceRequest?.totalFeeDue || 0}</span>
+            <div className={`flex justify-between items-center p-4 rounded-xl border mb-6 ${data?.clearanceRequest?.paymentReferenceId ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+              <div>
+                <span className={`block font-bold ${data?.clearanceRequest?.paymentReferenceId ? 'text-green-900' : 'text-amber-900'}`}>Total Due:</span>
+                {data?.clearanceRequest?.paymentReferenceId && (
+                  <span className="text-xs font-semibold text-green-700 flex items-center gap-1 mt-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Paid (Ref: {data.clearanceRequest.paymentReferenceId})
+                  </span>
+                )}
+              </div>
+              <span className={`text-xl font-bold ${data?.clearanceRequest?.paymentReferenceId ? 'text-green-700' : 'text-amber-700'}`}>₹{data?.clearanceRequest?.totalFeeDue || 0}</span>
             </div>
 
             <button 
