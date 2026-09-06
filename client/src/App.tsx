@@ -3,10 +3,13 @@ import Landing from './pages/Landing';
 import Login from './pages/Login';
 import StudentDashboard from './pages/StudentDashboard';
 import DepartmentDashboard from './pages/DepartmentDashboard';
+import Bubbles from './components/Bubbles';
 
 function App() {
   return (
-    <Router>
+    <>
+      <Bubbles />
+      <Router>
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
@@ -14,6 +17,7 @@ function App() {
         <Route path="/department/dashboard" element={<DepartmentDashboard />} />
       </Routes>
     </Router>
+    </>
   );
 }
 
