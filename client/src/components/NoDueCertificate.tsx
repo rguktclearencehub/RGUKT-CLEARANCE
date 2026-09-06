@@ -116,37 +116,36 @@ export default function NoDueCertificate({ student, onClose }: NoDueCertificateP
         @media print {
           @page {
             size: A4;
-            margin: 15mm;
+            margin: 0;
+          }
+          html, body {
+            width: 210mm;
+            height: 297mm;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
           }
           body * {
             visibility: hidden;
-          }
-          .print\\:bg-white {
-            background-color: white !important;
-          }
-          .print\\:hidden {
-            display: none !important;
-          }
-          .print\\:shadow-none {
-            box-shadow: none !important;
-          }
-          .print\\:p-0 {
-            padding: 0 !important;
-          }
-          .print\\:p-8 {
-            padding: 2rem !important;
-          }
-          .fixed {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
           }
           .printable-area {
             visibility: visible;
             position: absolute;
             left: 0;
             top: 0;
-            width: 100%;
+            width: 210mm !important;
+            height: 297mm !important;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 15mm !important;
+            box-sizing: border-box;
+            background: white !important;
+            border-radius: 0 !important;
+          }
+          .printable-area > div {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
           }
           .printable-area * {
             visibility: visible;
