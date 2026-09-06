@@ -45,21 +45,21 @@ export default function FeeReceipt({ student, clearances, totalFeeDue, paymentRe
       </div>
 
       {/* Printable Receipt Area */}
-      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl p-4 sm:p-6 relative overflow-hidden print:shadow-none print:max-w-3xl print:p-8 mt-16 sm:mt-0 mb-8 sm:mb-0 shrink-0">
+      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl p-3 sm:p-4 relative overflow-hidden print:shadow-none print:max-w-3xl print:p-8 mt-16 sm:mt-0 mb-8 sm:mb-0 shrink-0">
         
         {/* Background decorative elements */}
         <div className="absolute -top-32 -right-32 w-64 h-64 bg-green-50 rounded-full opacity-50 blur-3xl"></div>
         <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-blue-50 rounded-full opacity-50 blur-3xl"></div>
 
-        <div className="border-[6px] sm:border-[8px] border-double border-slate-200 p-4 sm:p-8 relative z-10 bg-white/50 backdrop-blur-sm rounded-xl">
+        <div className="border-[4px] sm:border-[6px] border-double border-slate-200 p-3 sm:p-5 relative z-10 bg-white/50 backdrop-blur-sm rounded-xl">
           
-          <div className="flex items-center justify-between mb-6 sm:mb-8 border-b border-slate-300 pb-4 sm:pb-6">
-            <div className="w-12 h-12 sm:w-20 sm:h-20 shrink-0 flex items-center justify-center">
+          <div className="flex items-center justify-between mb-4 sm:mb-5 border-b border-slate-300 pb-3 sm:pb-4">
+            <div className="w-10 h-10 sm:w-16 sm:h-16 shrink-0 flex items-center justify-center">
               <img src="/rgukt.png" alt="RGUKT Logo" className="w-full h-full object-contain" />
             </div>
             
             <div className="flex-1 text-center px-1 sm:px-2">
-              <h1 className="text-[10px] sm:text-[13px] md:text-[16px] lg:text-[19px] font-bold text-[#b03a2e] mb-1 font-sans whitespace-nowrap">
+              <h1 className="text-[10px] sm:text-[12px] md:text-[14px] lg:text-[16px] font-bold text-[#b03a2e] mb-0.5 font-sans whitespace-nowrap">
                 Rajiv Gandhi University of Knowledge Technologies
               </h1>
               <p className="text-[8px] sm:text-[10px] md:text-xs text-slate-700 font-medium leading-tight">
@@ -72,13 +72,13 @@ export default function FeeReceipt({ student, clearances, totalFeeDue, paymentRe
             <div className="w-12 sm:w-20 shrink-0 hidden md:block"></div>
           </div>
 
-          <div className="text-center mb-6 sm:mb-8">
-            <h2 className="text-lg sm:text-xl font-bold text-green-700 font-serif border-b-2 border-green-200 inline-block pb-1 sm:pb-2 px-4 sm:px-6">
+          <div className="text-center mb-4 sm:mb-5">
+            <h2 className="text-base sm:text-lg font-bold text-green-700 font-serif border-b-2 border-green-200 inline-block pb-1 px-4 sm:px-6">
               OFFICIAL FEE RECEIPT
             </h2>
           </div>
 
-          <div className="flex justify-between items-start text-sm sm:text-base text-slate-700 mb-6 sm:mb-8">
+          <div className="flex justify-between items-start text-xs sm:text-sm text-slate-700 mb-4 sm:mb-5">
             <div>
               <p><span className="font-semibold text-slate-500 w-24 inline-block">Name:</span> <span className="font-bold text-slate-900">{student.name}</span></p>
               <p><span className="font-semibold text-slate-500 w-24 inline-block">Student ID:</span> <span className="font-bold text-slate-900">{student.studentId}</span></p>
@@ -92,43 +92,43 @@ export default function FeeReceipt({ student, clearances, totalFeeDue, paymentRe
             </div>
           </div>
 
-          <div className="mb-6 sm:mb-8 border border-slate-300 rounded-lg overflow-hidden">
-            <table className="w-full text-left text-sm sm:text-base">
+          <div className="mb-4 sm:mb-5 border border-slate-300 rounded-lg overflow-hidden">
+            <table className="w-full text-left text-xs sm:text-sm">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-300">
                 <tr>
-                  <th className="py-3 px-4 font-bold">Department</th>
-                  <th className="py-3 px-4 font-bold text-right">Fee Due (₹)</th>
+                  <th className="py-2 px-3 font-bold">Department</th>
+                  <th className="py-2 px-3 font-bold text-right">Fee Due (₹)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {fees.map((f, idx) => (
                   <tr key={idx} className="bg-white">
-                    <td className="py-3 px-4 font-medium text-slate-700">{f.departmentName}</td>
-                    <td className="py-3 px-4 font-medium text-slate-900 text-right">₹{f.feeDue.toFixed(2)}</td>
+                    <td className="py-1.5 px-3 font-medium text-slate-700">{f.departmentName}</td>
+                    <td className="py-1.5 px-3 font-medium text-slate-900 text-right">₹{f.feeDue.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot className="bg-slate-50 border-t-2 border-slate-300">
                 <tr>
-                  <th className="py-4 px-4 font-bold text-slate-800 text-lg">Total Amount Paid</th>
-                  <th className="py-4 px-4 font-bold text-green-700 text-right text-lg">₹{totalFeeDue.toFixed(2)}</th>
+                  <th className="py-2.5 px-3 font-bold text-slate-800 text-base">Total Amount Paid</th>
+                  <th className="py-2.5 px-3 font-bold text-green-700 text-right text-base">₹{totalFeeDue.toFixed(2)}</th>
                 </tr>
               </tfoot>
             </table>
           </div>
 
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 text-center">
-            <p className="text-green-800 font-medium text-sm sm:text-base">
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4 sm:mb-6 text-center">
+            <p className="text-green-800 font-medium text-xs sm:text-sm">
               Payment successfully received and verified against Reference ID: 
-              <span className="block text-green-900 font-bold text-lg mt-1 tracking-wider">{paymentReferenceId}</span>
+              <span className="block text-green-900 font-bold text-base mt-0.5 tracking-wider">{paymentReferenceId}</span>
             </p>
           </div>
 
-          <div className="mt-8 sm:mt-12 text-center">
-            <div className="h-8 sm:h-12 flex items-end justify-center mb-1">
-              <span className="font-serif text-lg sm:text-xl text-blue-900/60 italic transform -rotate-2 block">Accounts Verified</span>
+          <div className="mt-4 sm:mt-6 text-center">
+            <div className="h-6 sm:h-10 flex items-end justify-center mb-1">
+              <span className="font-serif text-base sm:text-lg text-blue-900/60 italic transform -rotate-2 block">Accounts Verified</span>
             </div>
-            <p className="font-bold text-slate-900 border-t border-slate-300 pt-1 sm:pt-2 w-48 text-center text-xs sm:text-sm mx-auto">
+            <p className="font-bold text-slate-900 border-t border-slate-300 pt-1 w-40 text-center text-[10px] sm:text-xs mx-auto">
               Finance Office (FO)
             </p>
           </div>
