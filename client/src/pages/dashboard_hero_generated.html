@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Campus Governance - Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "primary": "#000000",
+            "outline-variant": "#c5c6cd",
+            "on-surface": "#191c1e",
+            "primary-fixed-dim": "#b9c7e4",
+            "inverse-primary": "#b9c7e4",
+            "primary-fixed": "#d6e3ff",
+            "on-primary-fixed": "#0d1c32",
+            "surface-variant": "#e0e3e5",
+            "surface-bright": "#f7f9fb",
+            "surface-container-low": "#f2f4f6",
+            "secondary-container": "#00ccf9",
+            "on-secondary-fixed-variant": "#004e60",
+            "background": "#f7f9fb",
+            "on-tertiary": "#ffffff",
+            "on-tertiary-container": "#75859d",
+            "on-secondary": "#ffffff",
+            "surface-container-highest": "#e0e3e5",
+            "surface": "#f7f9fb",
+            "on-tertiary-fixed-variant": "#38485d",
+            "on-tertiary-fixed": "#0b1c30",
+            "error": "#ba1a1a",
+            "surface-container": "#eceef0",
+            "tertiary": "#000000",
+            "inverse-on-surface": "#eff1f3",
+            "secondary": "#00677f",
+            "secondary-fixed-dim": "#4cd6ff",
+            "on-primary": "#ffffff",
+            "on-background": "#191c1e",
+            "surface-container-high": "#e6e8ea",
+            "on-primary-container": "#76849f",
+            "primary-container": "#0d1c32",
+            "tertiary-container": "#0b1c30",
+            "on-secondary-fixed": "#001f28",
+            "on-secondary-container": "#005266",
+            "tertiary-fixed-dim": "#b7c8e1",
+            "surface-tint": "#515f78",
+            "secondary-fixed": "#b7eaff",
+            "on-primary-fixed-variant": "#39475f",
+            "on-error": "#ffffff",
+            "outline": "#75777e",
+            "tertiary-fixed": "#d3e4fe",
+            "surface-container-lowest": "#ffffff",
+            "inverse-surface": "#2d3133",
+            "surface-dim": "#d8dadc",
+            "on-surface-variant": "#44474d",
+            "error-container": "#ffdad6",
+            "on-error-container": "#93000a"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "container-max": "1440px",
+            "base": "4px",
+            "gutter": "24px",
+            "margin-mobile": "16px",
+            "margin-desktop": "40px"
+          },
+          "fontFamily": {
+            "headline-sm": ["Plus Jakarta Sans"],
+            "body-sm": ["Inter"],
+            "headline-lg": ["Plus Jakarta Sans"],
+            "body-lg": ["Inter"],
+            "display-lg": ["Plus Jakarta Sans"],
+            "headline-md": ["Plus Jakarta Sans"],
+            "body-md": ["Inter"],
+            "label-sm": ["Inter"],
+            "label-md": ["Inter"]
+          },
+          "fontSize": {
+            "headline-sm": ["20px", { "lineHeight": "1.4", "fontWeight": "600" }],
+            "body-sm": ["14px", { "lineHeight": "1.5", "fontWeight": "400" }],
+            "headline-lg": ["32px", { "lineHeight": "1.3", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+            "body-lg": ["18px", { "lineHeight": "1.6", "fontWeight": "400" }],
+            "display-lg": ["48px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+            "headline-md": ["24px", { "lineHeight": "1.4", "fontWeight": "600" }],
+            "body-md": ["16px", { "lineHeight": "1.6", "fontWeight": "400" }],
+            "label-sm": ["12px", { "lineHeight": "1", "fontWeight": "600" }],
+            "label-md": ["14px", { "lineHeight": "1", "letterSpacing": "0.01em", "fontWeight": "500" }]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    body {
+      background-color: #F8FAFC;
+    }
+    .glass-panel {
+      background: rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    .card-shadow {
+      box-shadow: 0 4px 20px -2px rgba(10, 25, 47, 0.05);
+    }
+    .hover-lift {
+      transition: transform 300ms ease, box-shadow 300ms ease;
+    }
+    .hover-lift:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px -4px rgba(10, 25, 47, 0.08);
+    }
+    
+    /* Circular Progress */
+    .circular-chart {
+      display: block;
+      margin: 0 auto;
+      max-width: 80%;
+      max-height: 250px;
+    }
+    .circle-bg {
+      fill: none;
+      stroke: rgba(255, 255, 255, 0.2);
+      stroke-width: 3.8;
+    }
+    .circle {
+      fill: none;
+      stroke-width: 2.8;
+      stroke-linecap: round;
+      animation: progress 1s ease-out forwards;
+    }
+    @keyframes progress {
+      0% { stroke-dasharray: 0 100; }
+    }
+  </style>
+</head>
+<body class="text-on-background font-body-md antialiased min-h-screen flex">
+<!-- SideNavBar Component -->
+<aside class="bg-primary-container dark:bg-tertiary-container h-full w-64 fixed left-0 top-0 border-r border-outline-variant/10 shadow-xl flex flex-col h-screen py-8 z-50">
+<div class="px-6 mb-8 flex flex-col items-center">
+<div class="w-16 h-16 rounded-full bg-surface-container-lowest/10 mb-4 flex items-center justify-center overflow-hidden">
+<img alt="University Crest" class="w-12 h-12 object-contain opacity-80" data-alt="A refined, minimalist university crest logo featuring academic symbols like a book and laurel wreath. The design is modern, utilizing deep navy and bright white colors in a clean, tech-inspired vector style suitable for a premium campus portal light mode UI." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAAuJbKUM-dg0NFf7QetWXrj17Ff4TvFW8gO-Txp9534ky3S7d5La9-DJwyRp-0ARqeYy57RkOe1In3rB1q0u63Hd0Jg55BaZsG6jGZDAQaK6xWTmKdDHLKFn3fB7gH_ifyCC0uJIV_PfWTOXQPd19BMQE0vBqCC6iNwgakgmpUVb2wXYHubjtQwOjbU23UFxCAEJLXe0FebVafWwvEX1G5QwWWGXR5d0k1YflaluyIo5ZzonG55fedoVo8QTu6MtA8D7O0I2aknz2N"/>
+</div>
+<h1 class="font-headline-sm text-headline-sm font-bold text-surface-container-lowest text-center">Campus Governance</h1>
+<p class="font-label-sm text-label-sm text-on-primary-container mt-1">Ivy League Portal</p>
+</div>
+<nav class="flex-1 px-4 space-y-2">
+<!-- Active Tab: Dashboard -->
+<a class="flex items-center gap-3 px-4 py-3 text-surface-container-lowest border-l-2 border-secondary-container bg-surface-variant/10 rounded-r-lg font-label-md text-label-md scale-102 transition-transform duration-300" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">dashboard</span>
+        Dashboard
+      </a>
+<!-- Inactive Tabs -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-primary-container/70 font-label-md text-label-md hover:bg-surface-variant/20 hover:text-surface-container-lowest transition-all duration-300 rounded-lg" href="#">
+<span class="material-symbols-outlined">fact_check</span>
+        Clearance
+      </a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-primary-container/70 font-label-md text-label-md hover:bg-surface-variant/20 hover:text-surface-container-lowest transition-all duration-300 rounded-lg" href="#">
+<span class="material-symbols-outlined">person</span>
+        Profile
+      </a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-primary-container/70 font-label-md text-label-md hover:bg-surface-variant/20 hover:text-surface-container-lowest transition-all duration-300 rounded-lg" href="#">
+<span class="material-symbols-outlined">description</span>
+        Documents
+      </a>
+</nav>
+<div class="px-6 mt-auto">
+<button class="w-full py-3 bg-secondary-container text-on-secondary-container rounded-lg font-label-md text-label-md hover:scale-102 transition-transform duration-300 shadow-md">
+        Initiate Clearance
+      </button>
+</div>
+<div class="mt-8 px-4 space-y-2 border-t border-outline-variant/10 pt-4">
+<a class="flex items-center gap-3 px-4 py-2 text-on-primary-container/70 font-label-md text-label-md hover:bg-surface-variant/20 hover:text-surface-container-lowest transition-all duration-300 rounded-lg" href="#">
+<span class="material-symbols-outlined">settings</span>
+        Settings
+      </a>
+<a class="flex items-center gap-3 px-4 py-2 text-on-primary-container/70 font-label-md text-label-md hover:bg-surface-variant/20 hover:text-surface-container-lowest transition-all duration-300 rounded-lg" href="#">
+<span class="material-symbols-outlined">logout</span>
+        Logout
+      </a>
+</div>
+</aside>
+<!-- Main Content Wrapper -->
+<div class="flex-1 ml-64 flex flex-col min-h-screen">
+<!-- TopNavBar Component -->
+<header class="bg-surface/80 dark:bg-surface-dim/80 docked full-width top-0 sticky backdrop-blur-md border-b border-outline-variant/20 shadow-sm flex justify-between items-center h-16 px-margin-desktop z-40">
+<!-- Search -->
+<div class="flex-1 max-w-md">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="w-full pl-10 pr-4 py-2 bg-surface-container-lowest border border-outline-variant/50 rounded-lg text-body-sm font-body-sm focus:outline-none focus:border-secondary-container focus:ring-1 focus:ring-secondary-container transition-colors" placeholder="Search departments, documents..." type="text"/>
+</div>
+</div>
+<!-- Actions -->
+<div class="flex items-center gap-4">
+<button class="text-on-surface-variant hover:text-secondary transition-colors duration-200 p-2 rounded-full hover:bg-surface-variant/50">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:text-secondary transition-colors duration-200 p-2 rounded-full hover:bg-surface-variant/50">
+<span class="material-symbols-outlined">help_outline</span>
+</button>
+<div class="w-9 h-9 rounded-full bg-primary-fixed overflow-hidden border border-outline-variant/30 ml-2 cursor-pointer active:scale-95 transition-all">
+<img alt="Student Avatar" class="w-full h-full object-cover" data-alt="A professional headshot of a college student in bright, natural lighting. The student is smiling warmly, set against a blurred academic building background. The lighting is soft and modern, fitting a high-end educational software interface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBYd4sqSZo2WmN9St-JLoFFcH4gDA1IHcKvwYMh7k7iMt5Hhsw01ddtjsIW94SGv_JlcfA8gjcDBHlxUh_jolnR4uhZyWDrowyK8FH9-c6Jh0JvllEyrUFGLd5m1jDw-0Mti7svCmFEeM3vAKoluQp_Bl0JfwN318JrfBa1Tds95Fras-IJWMPupMrslY7ml6zguiFNe6uf9Gs0iBywMhAlgMxVV3umPxPL1L8DzA8eoZLEMcUDX6poZ-uz5bmGzvBG9utqsMUyStQl"/>
+</div>
+</div>
+</header>
+<!-- Page Content -->
+<main class="flex-1 p-margin-desktop max-w-container-max mx-auto w-full">
+<!-- Hero Section -->
+<section class="mb-12 relative rounded-xl overflow-hidden bg-surface-container-lowest border border-outline-variant/20 p-10 flex flex-col md:flex-row items-center justify-between shadow-sm">
+<div class="relative z-10 md:w-1/2 md:pr-10">
+<h2 class="font-headline-lg text-headline-lg text-primary font-bold mb-4">Clearance Overview</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant mb-8">You are making progress. Complete the remaining departmental clearances to generate your final No-Dues certificate.</p>
+<div class="flex items-center gap-6">
+<div class="bg-surface-container-lowest px-6 py-4 rounded-lg border border-outline-variant/20 shadow-sm">
+<span class="block font-label-md text-label-md text-outline mb-1">Total Pending</span>
+<span class="font-display-lg text-display-lg text-primary">3</span>
+</div>
+<div class="bg-surface-container-lowest px-6 py-4 rounded-lg border border-outline-variant/20 shadow-sm">
+<span class="block font-label-md text-label-md text-outline mb-1">Cleared</span>
+<span class="font-display-lg text-display-lg text-primary">0</span>
+</div>
+</div>
+</div>
+<div class="relative z-10 mt-10 md:mt-0 md:w-1/3 flex justify-center items-center">
+<div class="w-48 h-48 relative">
+<svg class="circular-chart w-full h-full transform -rotate-90" viewbox="0 0 36 36">
+<path class="circle-bg stroke-surface-container" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" style="stroke: #eceef0; stroke-width: 2;"></path>
+<path class="circle stroke-primary" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" stroke-dasharray="0, 100" style="stroke: #000000; stroke-width: 2;"></path>
+</svg>
+<div class="absolute inset-0 flex flex-col items-center justify-center">
+<span class="font-display-lg text-display-lg tracking-tighter text-primary">0%</span>
+<span class="font-label-sm text-label-sm text-outline uppercase tracking-widest mt-1">Cleared</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Grid Content -->
+<div class="flex items-center justify-between mb-6">
+<h3 class="font-headline-md text-headline-md text-primary">Department Status</h3>
+<button class="font-label-md text-label-md text-secondary hover:text-secondary-container transition-colors flex items-center gap-1">
+          View All <span class="material-symbols-outlined text-sm">arrow_forward</span>
+</button>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-gutter">
+<!-- Card 1: Accounts -->
+<div class="bg-surface-container-lowest rounded-xl p-6 card-shadow hover-lift border border-surface-variant flex flex-col h-full">
+<div class="flex justify-between items-start mb-6">
+<div class="w-12 h-12 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined text-2xl" style="font-variation-settings: 'FILL' 1;">account_balance</span>
+</div>
+<!-- Action Required Chip -->
+<span class="px-3 py-1 rounded-full bg-error-container text-on-error-container font-label-sm text-label-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">error</span> Action Required
+            </span>
+</div>
+<h4 class="font-headline-sm text-headline-sm text-primary mb-2">Accounts</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-6 flex-1">Outstanding fee balance for current semester needs to be cleared.</p>
+<div class="pt-4 border-t border-surface-variant flex items-center justify-between mt-auto">
+<span class="font-label-sm text-label-sm text-outline">Updated: Today</span>
+<button class="px-4 py-2 bg-primary-container text-surface-container-lowest rounded-lg font-label-sm text-label-sm hover:scale-102 transition-transform shadow-sm">
+              View Details
+            </button>
+</div>
+</div>
+<!-- Card 2: Hostel -->
+<div class="bg-surface-container-lowest rounded-xl p-6 card-shadow hover-lift border border-surface-variant flex flex-col h-full">
+<div class="flex justify-between items-start mb-6">
+<div class="w-12 h-12 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined text-2xl" style="font-variation-settings: 'FILL' 1;">apartment</span>
+</div>
+<!-- Pending Chip -->
+<span class="px-3 py-1 rounded-full bg-yellow-100 text-yellow-800 font-label-sm text-label-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">pending</span> Pending
+            </span>
+</div>
+<h4 class="font-headline-sm text-headline-sm text-primary mb-2">Hostel</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-6 flex-1">Room inventory check scheduled for next week.</p>
+<div class="pt-4 border-t border-surface-variant flex items-center justify-between mt-auto">
+<span class="font-label-sm text-label-sm text-outline">Updated: 2d ago</span>
+<button class="px-4 py-2 border border-outline text-primary rounded-lg font-label-sm text-label-sm hover:bg-surface-variant/50 transition-colors">
+              View Details
+            </button>
+</div>
+</div>
+<!-- Card 3: Library -->
+<div class="bg-surface-container-lowest rounded-xl p-6 card-shadow hover-lift border border-surface-variant flex flex-col h-full">
+<div class="flex justify-between items-start mb-6">
+<div class="w-12 h-12 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined text-2xl" style="font-variation-settings: 'FILL' 1;">menu_book</span>
+</div>
+<!-- Approved Chip -->
+<span class="px-3 py-1 rounded-full bg-green-100 text-green-800 font-label-sm text-label-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">check_circle</span> Approved
+            </span>
+</div>
+<h4 class="font-headline-sm text-headline-sm text-primary mb-2">Library</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-6 flex-1">All issued books returned. No late fines pending.</p>
+<div class="pt-4 border-t border-surface-variant flex items-center justify-between mt-auto">
+<span class="font-label-sm text-label-sm text-outline">Updated: 1w ago</span>
+<button class="px-4 py-2 border border-outline text-primary rounded-lg font-label-sm text-label-sm hover:bg-surface-variant/50 transition-colors">
+              View Details
+            </button>
+</div>
+</div>
+<!-- Card 4: Sports -->
+<div class="bg-surface-container-lowest rounded-xl p-6 card-shadow hover-lift border border-surface-variant flex flex-col h-full">
+<div class="flex justify-between items-start mb-6">
+<div class="w-12 h-12 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined text-2xl" style="font-variation-settings: 'FILL' 1;">sports_soccer</span>
+</div>
+<!-- Pending Chip -->
+<span class="px-3 py-1 rounded-full bg-yellow-100 text-yellow-800 font-label-sm text-label-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">pending</span> Pending
+            </span>
+</div>
+<h4 class="font-headline-sm text-headline-sm text-primary mb-2">Sports</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-6 flex-1">Awaiting confirmation from equipment room manager.</p>
+<div class="pt-4 border-t border-surface-variant flex items-center justify-between mt-auto">
+<span class="font-label-sm text-label-sm text-outline">Updated: 4h ago</span>
+<button class="px-4 py-2 border border-outline text-primary rounded-lg font-label-sm text-label-sm hover:bg-surface-variant/50 transition-colors">
+              View Details
+            </button>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

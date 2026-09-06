@@ -1,0 +1,10 @@
+{
+  "name": "rgukt-clearance-hub",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install --prefix client",
+    "dev": "npm run dev --prefix client"
+  },
+  "devDependencies": {}
+}

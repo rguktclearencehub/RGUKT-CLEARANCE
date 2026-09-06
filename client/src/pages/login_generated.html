@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Digital Campus - Login</title>
+<!-- Fonts & Icons -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Plus+Jakarta+Sans:wght@600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/lucide@latest"></script>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Config -->
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+              "surface-dim": "#d8dadc",
+              "on-error-container": "#93000a",
+              "secondary": "#00677f",
+              "surface-container-lowest": "#ffffff",
+              "surface-tint": "#515f78",
+              "inverse-primary": "#b9c7e4",
+              "on-tertiary-fixed": "#0b1c30",
+              "primary-fixed-dim": "#b9c7e4",
+              "surface-container-low": "#f2f4f6",
+              "outline-variant": "#c5c6cd",
+              "tertiary-fixed": "#d3e4fe",
+              "error-container": "#ffdad6",
+              "on-primary-container": "#76849f",
+              "on-background": "#191c1e",
+              "primary-fixed": "#d6e3ff",
+              "surface": "#f7f9fb",
+              "tertiary-fixed-dim": "#b7c8e1",
+              "on-secondary-container": "#005266",
+              "surface-container": "#eceef0",
+              "on-secondary-fixed": "#001f28",
+              "on-tertiary-fixed-variant": "#38485d",
+              "inverse-on-surface": "#eff1f3",
+              "surface-bright": "#f7f9fb",
+              "secondary-container": "#00ccf9",
+              "on-surface": "#191c1e",
+              "background": "#f7f9fb",
+              "surface-container-high": "#e6e8ea",
+              "outline": "#75777e",
+              "error": "#ba1a1a",
+              "on-secondary-fixed-variant": "#004e60",
+              "on-secondary": "#ffffff",
+              "on-primary-fixed-variant": "#39475f",
+              "on-tertiary-container": "#75859d",
+              "secondary-fixed": "#b7eaff",
+              "primary-container": "#0d1c32",
+              "on-primary-fixed": "#0d1c32",
+              "tertiary-container": "#0b1c30",
+              "inverse-surface": "#2d3133",
+              "primary": "#000000",
+              "on-surface-variant": "#44474d",
+              "secondary-fixed-dim": "#4cd6ff",
+              "on-primary": "#ffffff",
+              "surface-variant": "#e0e3e5",
+              "tertiary": "#000000",
+              "surface-container-highest": "#e0e3e5",
+              "on-error": "#ffffff",
+              "on-tertiary": "#ffffff"
+            },
+            "borderRadius": {
+              "DEFAULT": "0.25rem",
+              "lg": "0.5rem",
+              "xl": "0.75rem",
+              "full": "9999px"
+            },
+            "spacing": {
+              "gutter": "24px",
+              "margin-desktop": "40px",
+              "margin-mobile": "16px",
+              "container-max": "1440px",
+              "base": "4px"
+            },
+            "fontFamily": {
+              "body-lg": ["Inter"],
+              "display-lg": ["Plus Jakarta Sans"],
+              "headline-sm": ["Plus Jakarta Sans"],
+              "body-sm": ["Inter"],
+              "label-md": ["Inter"],
+              "label-sm": ["Inter"],
+              "body-md": ["Inter"],
+              "headline-md": ["Plus Jakarta Sans"],
+              "headline-lg": ["Plus Jakarta Sans"]
+            },
+            "fontSize": {
+              "body-lg": ["18px", {"lineHeight": "1.6", "fontWeight": "400"}],
+              "display-lg": ["48px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+              "headline-sm": ["20px", {"lineHeight": "1.4", "fontWeight": "600"}],
+              "body-sm": ["14px", {"lineHeight": "1.5", "fontWeight": "400"}],
+              "label-md": ["14px", {"lineHeight": "1", "letterSpacing": "0.01em", "fontWeight": "500"}],
+              "label-sm": ["12px", {"lineHeight": "1", "fontWeight": "600"}],
+              "body-md": ["16px", {"lineHeight": "1.6", "fontWeight": "400"}],
+              "headline-md": ["24px", {"lineHeight": "1.4", "fontWeight": "600"}],
+              "headline-lg": ["32px", {"lineHeight": "1.3", "letterSpacing": "-0.01em", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen flex flex-col antialiased">
+<!-- TopNavBar -->
+<nav class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-margin-mobile md:px-margin-desktop py-4 max-w-container-max mx-auto backdrop-blur-md bg-white/80 shadow-sm transition-transform duration-300">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="account_balance">account_balance</span>
+<span class="font-headline-md text-headline-md font-bold text-primary">Digital Campus</span>
+</div>
+<!-- Desktop Nav -->
+<div class="hidden md:flex items-center gap-8">
+<a class="text-on-surface-variant font-body-md hover:text-secondary-container transition-colors duration-300" href="#">Admissions</a>
+<a class="text-on-surface-variant font-body-md hover:text-secondary-container transition-colors duration-300" href="#">Programs</a>
+<a class="text-on-surface-variant font-body-md hover:text-secondary-container transition-colors duration-300" href="#">Student Portal</a>
+<a class="text-on-surface-variant font-body-md hover:text-secondary-container transition-colors duration-300" href="#">Help</a>
+</div>
+<div class="flex items-center">
+<button class="bg-primary-container text-on-primary font-label-md py-2 px-6 rounded-lg hover:scale-102 transition-transform duration-300 hidden md:block">Sign In</button>
+<button class="md:hidden text-primary p-2">
+<i class="w-6 h-6" data-lucide="menu"></i>
+</button>
+</div>
+</nav>
+<!-- Main Content -->
+<main class="flex-grow flex flex-col md:flex-row w-full pt-[72px]"> <!-- pt to account for fixed nav -->
+<!-- Left Side: Login Form -->
+<section class="w-full md:w-1/2 lg:w-[45%] xl:w-[40%] flex flex-col justify-center items-center p-8 md:p-12 lg:p-16 bg-surface-container-lowest">
+<div class="w-full max-w-[400px]">
+<div class="mb-8">
+<h1 class="font-headline-lg text-headline-lg text-primary mb-2">Welcome Back</h1>
+<p class="font-body-md text-body-md text-on-surface-variant">Sign in to manage your campus governance and no-dues clearance.</p>
+</div>
+<form class="space-y-6">
+<div class="space-y-2">
+<label class="block font-label-md text-label-md text-on-surface" for="email">Email Address</label>
+<div class="relative">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-outline">
+<i class="w-5 h-5" data-lucide="mail"></i>
+</div>
+<input class="block w-full pl-10 pr-3 py-3 border border-outline-variant rounded-lg font-body-sm text-body-sm text-on-surface placeholder-outline focus:ring-2 focus:ring-secondary-container focus:border-secondary-container transition-colors bg-surface-container-lowest" id="email" placeholder="student@university.edu" required="" type="email"/>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between items-center">
+<label class="block font-label-md text-label-md text-on-surface" for="password">Password</label>
+<a class="font-label-sm text-label-sm text-secondary-container hover:underline transition-all" href="#">Forgot password?</a>
+</div>
+<div class="relative">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-outline">
+<i class="w-5 h-5" data-lucide="lock"></i>
+</div>
+<input class="block w-full pl-10 pr-10 py-3 border border-outline-variant rounded-lg font-body-sm text-body-sm text-on-surface placeholder-outline focus:ring-2 focus:ring-secondary-container focus:border-secondary-container transition-colors bg-surface-container-lowest" id="password" placeholder="••••••••" required="" type="password"/>
+<div class="absolute inset-y-0 right-0 pr-3 flex items-center cursor-pointer text-outline hover:text-primary transition-colors">
+<i class="w-5 h-5" data-lucide="eye-off"></i>
+</div>
+</div>
+</div>
+<button class="w-full bg-primary-container text-on-primary font-label-md py-3 px-4 rounded-lg hover:scale-[1.02] transition-transform duration-300 shadow-[0_4px_20px_-2px_rgba(10,25,47,0.15)] flex justify-center items-center gap-2" type="submit">
+<span>Sign In</span>
+<i class="w-4 h-4" data-lucide="arrow-right"></i>
+</button>
+</form>
+<div class="mt-6 flex items-center">
+<div class="flex-grow border-t border-outline-variant"></div>
+<span class="flex-shrink-0 mx-4 font-label-sm text-label-sm text-outline">or</span>
+<div class="flex-grow border-t border-outline-variant"></div>
+</div>
+<div class="mt-6">
+<button class="w-full bg-surface text-on-surface border border-outline-variant font-label-md py-3 px-4 rounded-lg hover:bg-surface-variant transition-colors duration-300 flex justify-center items-center gap-3">
+<svg class="w-5 h-5" fill="none" viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+<path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"></path>
+<path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"></path>
+<path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"></path>
+<path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"></path>
+</svg>
+                        Sign in with Google
+                    </button>
+</div>
+<p class="mt-8 text-center font-body-sm text-body-sm text-on-surface-variant">
+                    New student? <a class="text-secondary-container font-semibold hover:underline transition-all" href="#">Request access</a>
+</p>
+</div>
+</section>
+<!-- Right Side: Hero Image -->
+<section class="hidden md:block md:w-1/2 lg:w-[55%] xl:w-[60%] relative bg-primary-container">
+<!-- Ensure image fills container and uses overlay for contrast -->
+<div class="absolute inset-0 bg-primary-container mix-blend-multiply opacity-40 z-10"></div>
+<img alt="Modern university campus building at dusk with glowing digital overlays representing academic data and connectivity, embodying the 'Ivy League meets Tech' aesthetic." class="absolute inset-0 w-full h-full object-cover z-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCsW_KdCPubSZ2Yqs15MochwP-aspRc1tfeYVzQahfn16PVOpnOqk-ekhxYT3SPXQEcMgNGK2wwyq_MeL33dg_mWd5Hp9JwhvukNC2R_RE0TJ7Vkfbt8Eo6B-9lxE_-9-74BC0Wsq358bHMkf1d6hiIu3esnApaqg6pWmlTAltO2Ppsu7iVlMZRCPw4OrBYlk1rj_xHGw9T6_xri0WDDns_Mfpu7TUgIAuj75Qo8lZ-MFE3ysvx9VxS7sYcDqEhdV0l7lVPZjEEWEyR"/>
+<!-- Optional Glassmorphic overlay for visual interest -->
+<div class="absolute bottom-12 left-12 right-12 z-20 glass-panel rounded-xl p-6 shadow-lg border border-white/20 max-w-md">
+<div class="flex items-start gap-4">
+<div class="w-12 h-12 rounded-full bg-secondary-container/20 flex items-center justify-center text-secondary-container flex-shrink-0">
+<i class="w-6 h-6" data-lucide="shield-check"></i>
+</div>
+<div>
+<h3 class="font-headline-sm text-headline-sm text-primary-container mb-1">Secure Governance</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Your academic records and clearance statuses are encrypted and managed with strict institutional compliance.</p>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="w-full bg-surface py-8 px-margin-mobile md:px-margin-desktop flex flex-col md:flex-row justify-between items-center max-w-container-max mx-auto mt-auto border-t border-surface-variant">
+<div class="mb-4 md:mb-0">
+<span class="font-headline-sm text-headline-sm text-primary">Digital Campus</span>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">© 2024 Digital Campus Governance. All rights reserved.</p>
+</div>
+<div class="flex flex-wrap justify-center gap-6">
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-secondary-container hover:underline transition-all opacity-80 hover:opacity-100" href="#">Privacy Policy</a>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-secondary-container hover:underline transition-all opacity-80 hover:opacity-100" href="#">Terms of Service</a>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-secondary-container hover:underline transition-all opacity-80 hover:opacity-100" href="#">Support</a>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-secondary-container hover:underline transition-all opacity-80 hover:opacity-100" href="#">Contact Us</a>
+</div>
+</footer>
+<script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+    </script>
+</body></html>
