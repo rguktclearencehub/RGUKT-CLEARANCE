@@ -216,7 +216,7 @@ export default function DepartmentDashboard() {
     <div className="flex min-h-screen bg-background text-on-background font-body-md antialiased">
       
       {/* SideNavBar Component */}
-      <aside className="bg-primary-container h-full w-64 fixed left-0 top-0 border-r border-outline-variant/10 shadow-xl flex flex-col py-8 z-50">
+      <aside className="bg-primary-container h-full w-64 fixed left-0 top-0 rounded-r-3xl border-r border-outline-variant/10 shadow-xl flex flex-col py-8 z-50">
         <div className="px-6 mb-8 flex flex-col items-center">
           <div className="w-24 h-24 mb-4 flex items-center justify-center">
             <img src="/logo.png" alt="RGUKT Logo" className="w-full h-full object-contain" />
