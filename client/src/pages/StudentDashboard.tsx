@@ -871,12 +871,22 @@ export default function StudentDashboard() {
           <div className="bg-surface-container-lowest rounded-2xl p-8 max-w-md w-full shadow-2xl border border-surface-variant animate-in fade-in zoom-in-95 duration-200">
             <div className="flex justify-between items-start mb-6">
               <div>
-                <h3 className="font-headline-md text-2xl font-bold text-primary mb-1">Fee Dues Breakdown</h3>
-                <p className="font-body-sm text-on-surface-variant">Departments that have issued pending dues</p>
+                <h3 className={`font-headline-md text-2xl font-bold mb-1 ${data?.clearanceRequest?.paymentReferenceId ? 'text-green-700' : 'text-primary'}`}>
+                  {data?.clearanceRequest?.paymentReferenceId ? 'Fee Payment Receipt' : 'Fee Dues Breakdown'}
+                </h3>
+                <p className="font-body-sm text-on-surface-variant">
+                  {data?.clearanceRequest?.paymentReferenceId ? 'Official record of your paid department dues' : 'Departments that have issued pending dues'}
+                </p>
               </div>
-              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
-                <span className="text-amber-700 font-bold text-lg">₹</span>
-              </div>
+              {data?.clearanceRequest?.paymentReferenceId ? (
+                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                  <CheckCircle2 className="text-green-600 w-6 h-6" />
+                </div>
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                  <span className="text-amber-700 font-bold text-lg">₹</span>
+                </div>
+              )}
             </div>
             
             <div className="space-y-3 mb-6 max-h-60 overflow-y-auto pr-2">
