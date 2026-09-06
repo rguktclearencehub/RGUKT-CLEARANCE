@@ -41,7 +41,7 @@ export default function NoDueCertificate({ student, onClose }: NoDueCertificateP
       </div>
 
       {/* Printable Certificate Area */}
-      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl p-4 sm:p-6 relative overflow-hidden print:shadow-none print:max-w-4xl print:p-8 mt-16 sm:mt-0 mb-8 sm:mb-0 shrink-0">
+      <div className="printable-area bg-white w-full max-w-2xl rounded-2xl shadow-2xl p-4 sm:p-6 relative overflow-hidden print:shadow-none print:max-w-4xl print:p-8 mt-16 sm:mt-0 mb-8 sm:mb-0 shrink-0">
         
         {/* Background decorative elements */}
         <div className="absolute -top-32 -right-32 w-64 h-64 bg-blue-50 rounded-full opacity-50 blur-3xl"></div>
@@ -137,14 +137,14 @@ export default function NoDueCertificate({ student, onClose }: NoDueCertificateP
             top: 0 !important;
             left: 0 !important;
           }
-          .z-\\[200\\] > div:last-child {
+          .printable-area {
             visibility: visible;
             position: absolute;
             left: 0;
             top: 0;
             width: 100%;
           }
-          .z-\\[200\\] > div:last-child * {
+          .printable-area * {
             visibility: visible;
           }
         }

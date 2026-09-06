@@ -45,7 +45,7 @@ export default function FeeReceipt({ student, clearances, totalFeeDue, paymentRe
       </div>
 
       {/* Printable Receipt Area */}
-      <div className="bg-white w-full max-w-2xl rounded-xl shadow-2xl p-2 sm:p-3 relative overflow-hidden print:shadow-none print:max-w-3xl print:p-6 mt-16 sm:mt-0 mb-8 sm:mb-0 shrink-0">
+      <div className="printable-area bg-white w-full max-w-2xl rounded-xl shadow-2xl p-2 sm:p-3 relative overflow-hidden print:shadow-none print:max-w-3xl print:p-6 mt-16 sm:mt-0 mb-8 sm:mb-0 shrink-0">
         
         {/* Background decorative elements */}
         <div className="absolute -top-32 -right-32 w-64 h-64 bg-green-50 rounded-full opacity-50 blur-3xl"></div>
@@ -162,14 +162,14 @@ export default function FeeReceipt({ student, clearances, totalFeeDue, paymentRe
             top: 0 !important;
             left: 0 !important;
           }
-          .z-\\[200\\] > div:last-child {
+          .printable-area {
             visibility: visible;
             position: absolute;
             left: 0;
             top: 0;
             width: 100%;
           }
-          .z-\\[200\\] > div:last-child * {
+          .printable-area * {
             visibility: visible;
           }
         }
