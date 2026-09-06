@@ -31,6 +31,7 @@ export default function StudentDashboard() {
   const [showScholarshipModal, setShowScholarshipModal] = useState(false);
   const [scholarshipId, setScholarshipId] = useState('');
   const [pendingDepartments, setPendingDepartments] = useState<string[]>([]);
+  const [showFeeBreakdown, setShowFeeBreakdown] = useState(false);
   const navigate = useNavigate();
 
   const fetchDashboardData = async () => {
@@ -421,9 +422,13 @@ export default function StudentDashboard() {
                 <div className="flex items-center gap-4">
                   <h3 className="font-headline-md text-2xl font-bold text-primary">Department Status</h3>
                   {request && request.totalFeeDue > 0 && (
-                    <span className="font-label-sm font-bold text-amber-700 bg-amber-100 px-3 py-1 rounded-full border border-amber-200 flex items-center gap-1.5 shadow-sm">
+                    <button 
+                      onClick={() => setShowFeeBreakdown(true)}
+                      className="font-label-sm font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 transition-colors px-3 py-1 rounded-full border border-amber-300 flex items-center gap-1.5 shadow-sm cursor-pointer"
+                    >
                       Total Dues: ₹{request.totalFeeDue}
-                    </span>
+                      <span className="text-[10px] bg-amber-700 text-amber-100 px-1.5 rounded-full ml-1">View Details</span>
+                    </button>
                   )}
                 </div>
                 {request && (
@@ -849,6 +854,55 @@ export default function StudentDashboard() {
           </div>
         </div>
       )}
+      {/* Fee Breakdown Modal */}
+      {showFeeBreakdown && (
+        <div className="fixed inset-0 bg-primary/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+          <div className="bg-surface-container-lowest rounded-2xl p-8 max-w-md w-full shadow-2xl border border-surface-variant animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h3 className="font-headline-md text-2xl font-bold text-primary mb-1">Fee Dues Breakdown</h3>
+                <p className="font-body-sm text-on-surface-variant">Departments that have issued pending dues</p>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                <span className="text-amber-700 font-bold text-lg">₹</span>
+              </div>
+            </div>
+            
+            <div className="space-y-3 mb-6 max-h-60 overflow-y-auto pr-2">
+              {data?.clearanceRequest?.departmentClearances
+                ?.filter((d: any) => d.feeDue > 0)
+                .map((d: any, idx: number) => (
+                <div key={idx} className="flex justify-between items-center p-3 bg-surface-variant/30 rounded-xl border border-surface-variant/50">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-primary shadow-sm border border-outline-variant/30">
+                      {getIcon(d.departmentName)}
+                    </div>
+                    <span className="font-bold text-slate-700">{d.departmentName}</span>
+                  </div>
+                  <span className="font-bold text-amber-700">₹{d.feeDue}</span>
+                </div>
+              ))}
+              
+              {(!data?.clearanceRequest?.departmentClearances || data.clearanceRequest.departmentClearances.filter((d: any) => d.feeDue > 0).length === 0) && (
+                <p className="text-center text-slate-500 py-4 text-sm font-medium">No active fee dues found.</p>
+              )}
+            </div>
+
+            <div className="flex justify-between items-center p-4 bg-amber-50 rounded-xl border border-amber-200 mb-6">
+              <span className="font-bold text-amber-900">Total Due:</span>
+              <span className="text-xl font-bold text-amber-700">₹{data?.clearanceRequest?.totalFeeDue || 0}</span>
+            </div>
+
+            <button 
+              onClick={() => setShowFeeBreakdown(false)} 
+              className="w-full bg-primary hover:bg-primary-hover text-white py-3 rounded-xl font-label-md font-semibold transition-colors shadow-sm"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
