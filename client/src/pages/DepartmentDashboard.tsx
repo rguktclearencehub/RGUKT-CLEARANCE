@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { db } from '../firebase';
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, setDoc, limit } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FileText, Settings, LogOut, Search, Bell, HelpCircle, CheckCircle2, AlertCircle, Clock, Building2, Eye, ShieldCheck, CheckSquare, Building, Printer } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, Settings, LogOut, Search, Bell, CheckCircle2, AlertCircle, Clock, ShieldCheck, CheckSquare, Printer } from 'lucide-react';
 import NoDueCertificate from '../components/NoDueCertificate';
 
 export default function DepartmentDashboard() {

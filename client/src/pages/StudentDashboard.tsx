@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CheckSquare, User, FileText, Settings, LogOut, Search, Bell, HelpCircle, Book, Building, Dumbbell, Briefcase, AlertCircle, Clock, CheckCircle2, Send, Eye, ShieldCheck, FlaskConical, Microscope, Monitor, Award, UserCog, Lock } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, User, FileText, Settings, LogOut, Search, Bell, HelpCircle, Book, Building, Dumbbell, Briefcase, AlertCircle, Clock, CheckCircle2, Send, ShieldCheck, FlaskConical, Microscope, Monitor, Award, UserCog, Lock } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, doc, writeBatch, limit, deleteDoc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, writeBatch, limit, setDoc } from 'firebase/firestore';
 import NoDueCertificate from '../components/NoDueCertificate';
 
 const PUC_DEPARTMENTS = [
@@ -221,10 +221,10 @@ export default function StudentDashboard() {
   const currentDepartments = currentProgram === 'B.Tech' ? BTECH_DEPARTMENTS : PUC_DEPARTMENTS;
   const deps = request ? request.departmentClearances : [];
   
-  const total = currentDepartments.length;
-  const approved = deps.filter((d: any) => d.status === 'APPROVED').length;
-  const pending = total - approved;
-  const percentage = Math.round((approved / total) * 100) || 0;
+  
+  
+  
+  
 
   const getIcon = (name: string) => {
     const n = name.toUpperCase();

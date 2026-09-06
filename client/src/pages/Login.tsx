@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, EyeOff, FileCheck, ArrowRight } from 'lucide-react';
+import { Mail, Lock, EyeOff, ArrowRight } from 'lucide-react';
 import { auth, googleProvider, db } from '../firebase';
 import { signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, writeBatch, updateDoc } from 'firebase/firestore';

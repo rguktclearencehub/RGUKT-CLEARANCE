@@ -1,5 +1,4 @@
-import React from 'react';
-import { Award, Printer, X } from 'lucide-react';
+import { Printer, X } from 'lucide-react';
 
 interface NoDueCertificateProps {
   student: {
