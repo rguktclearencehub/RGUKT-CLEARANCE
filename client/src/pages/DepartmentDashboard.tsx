@@ -111,8 +111,10 @@ export default function DepartmentDashboard() {
       if (newStatus === 'REJECTED') {
         await updateDoc(crRef, { status: 'REJECTED', updatedAt: new Date().toISOString() });
       } else if (newStatus === 'APPROVED') {
-        const currentIndex = DEPARTMENTS.indexOf(departmentName);
-        const isLast = currentIndex === DEPARTMENTS.length - 1;
+        const programType = selectedClearance.student?.program || 'PUC';
+        const currentSequence = programType === 'B.Tech' ? BTECH_DEPARTMENTS : PUC_DEPARTMENTS;
+        const currentIndex = currentSequence.indexOf(departmentName);
+        const isLast = currentIndex === currentSequence.length - 1;
         if (isLast) {
           await updateDoc(crRef, { status: 'APPROVED', updatedAt: new Date().toISOString() });
         }
@@ -384,8 +386,9 @@ export default function DepartmentDashboard() {
             {selectedClearance.status === 'APPROVED' && (
               <div className="mt-2">
                 {(() => {
-                  const currentIndex = DEPARTMENTS.indexOf(departmentName);
-                  const nextDeptName = currentIndex >= 0 && currentIndex < DEPARTMENTS.length - 1 ? DEPARTMENTS[currentIndex + 1] : null;
+                  const currentSequence = selectedClearance.student?.program === 'B.Tech' ? BTECH_DEPARTMENTS : PUC_DEPARTMENTS;
+                  const currentIndex = currentSequence.indexOf(departmentName);
+                  const nextDeptName = currentIndex >= 0 && currentIndex < currentSequence.length - 1 ? currentSequence[currentIndex + 1] : null;
                   if (nextDeptName) {
                     if (selectedClearance.forwarded) {
                       return (
