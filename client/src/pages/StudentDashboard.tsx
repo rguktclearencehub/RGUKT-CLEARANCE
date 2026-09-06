@@ -551,7 +551,10 @@ export default function StudentDashboard() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                  {deps.filter((d: any) => d.status === 'APPROVED').map((dept: any) => (
+                  {deps
+                    .filter((d: any) => d.status === 'APPROVED')
+                    .sort((a: any, b: any) => currentDepartments.indexOf(a.departmentName) - currentDepartments.indexOf(b.departmentName))
+                    .map((dept: any) => (
                     <div key={dept.id} className="bg-surface border border-surface-variant rounded-2xl p-5 hover:border-primary/30 transition-colors shadow-sm flex flex-col">
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-3">
