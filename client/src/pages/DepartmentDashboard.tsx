@@ -120,7 +120,7 @@ export default function DepartmentDashboard() {
         }
       }
       
-      setSelectedClearance(null);
+      setSelectedClearance((prev: any) => prev ? { ...prev, status: newStatus } : null);
       setActionType(null);
       setRemarks('');
       
