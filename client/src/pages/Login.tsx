@@ -173,12 +173,15 @@ export default function Login() {
 
   return (
     <div 
-      className="min-h-screen flex items-center justify-center p-4 sm:p-6 font-body-md antialiased bg-cover bg-center bg-no-repeat"
+      className="min-h-screen relative flex items-center justify-center p-4 sm:p-6 font-body-md antialiased bg-cover bg-center bg-no-repeat"
       style={{ backgroundImage: "url('/back.jpeg')" }}
     >
       
+      {/* Overlay to decrease background opacity */}
+      <div className="absolute inset-0 bg-white/60"></div>
+
       {/* Main Card */}
-      <div className="bg-white rounded-[2rem] shadow-2xl flex flex-col w-full max-w-[600px] overflow-hidden min-h-[500px]">
+      <div className="bg-white rounded-[2rem] shadow-2xl flex flex-col w-full max-w-[600px] overflow-hidden min-h-[500px] relative z-10">
         
         {/* Login Form Container */}
         <div className="w-full p-8 lg:p-12 flex flex-col items-center justify-center relative bg-white">
