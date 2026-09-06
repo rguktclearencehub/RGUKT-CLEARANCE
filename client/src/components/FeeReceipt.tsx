@@ -139,6 +139,10 @@ export default function FeeReceipt({ student, clearances, totalFeeDue, paymentRe
       {/* Print styles */}
       <style dangerouslySetInnerHTML={{__html: `
         @media print {
+          @page {
+            size: A4;
+            margin: 15mm;
+          }
           body * {
             visibility: hidden;
           }

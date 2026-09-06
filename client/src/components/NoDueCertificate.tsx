@@ -114,6 +114,10 @@ export default function NoDueCertificate({ student, onClose }: NoDueCertificateP
       {/* Print styles */}
       <style dangerouslySetInnerHTML={{__html: `
         @media print {
+          @page {
+            size: A4;
+            margin: 15mm;
+          }
           body * {
             visibility: hidden;
           }
