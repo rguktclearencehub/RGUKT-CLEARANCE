@@ -4,6 +4,7 @@ import { LayoutDashboard, CheckSquare, User, FileText, Settings, LogOut, Search,
 import { db } from '../firebase';
 import { collection, query, where, getDocs, doc, writeBatch, limit, setDoc } from 'firebase/firestore';
 import NoDueCertificate from '../components/NoDueCertificate';
+import FeeReceipt from '../components/FeeReceipt';
 
 const PUC_DEPARTMENTS = [
   'Hostel', 'Sports', 'Physics Lab', 'Chemistry Lab', 'Biology Lab',
@@ -32,6 +33,7 @@ export default function StudentDashboard() {
   const [scholarshipId, setScholarshipId] = useState('');
   const [pendingDepartments, setPendingDepartments] = useState<string[]>([]);
   const [showFeeBreakdown, setShowFeeBreakdown] = useState(false);
+  const [showFeeReceipt, setShowFeeReceipt] = useState(false);
   const navigate = useNavigate();
 
   const fetchDashboardData = async () => {
@@ -921,14 +923,49 @@ export default function StudentDashboard() {
               <span className={`text-xl font-bold ${data?.clearanceRequest?.paymentReferenceId ? 'text-green-700' : 'text-amber-700'}`}>₹{data?.clearanceRequest?.totalFeeDue || 0}</span>
             </div>
 
-            <button 
-              onClick={() => setShowFeeBreakdown(false)} 
-              className="w-full bg-primary hover:bg-primary-hover text-white py-3 rounded-xl font-label-md font-semibold transition-colors shadow-sm"
-            >
-              Close
-            </button>
+            {data?.clearanceRequest?.paymentReferenceId ? (
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setShowFeeBreakdown(false)} 
+                  className="flex-1 bg-surface-variant text-on-surface-variant py-3 rounded-xl font-label-md font-semibold hover:bg-outline-variant/30 transition-colors"
+                >
+                  Close
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowFeeBreakdown(false);
+                    setShowFeeReceipt(true);
+                  }}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-label-md font-semibold transition-colors shadow-sm flex items-center justify-center gap-2"
+                >
+                  Download Receipt
+                </button>
+              </div>
+            ) : (
+              <button 
+                onClick={() => setShowFeeBreakdown(false)} 
+                className="w-full bg-primary hover:bg-primary-hover text-white py-3 rounded-xl font-label-md font-semibold transition-colors shadow-sm"
+              >
+                Close
+              </button>
+            )}
           </div>
         </div>
+      )}
+
+      {/* Fee Receipt Component */}
+      {showFeeReceipt && data?.clearanceRequest && (
+        <FeeReceipt
+          student={{
+            name: data.name || data.email?.split('@')[0],
+            studentId: data.id,
+            program: data.clearanceRequest.programType || 'PUC'
+          }}
+          clearances={data.clearanceRequest.departmentClearances || []}
+          totalFeeDue={data.clearanceRequest.totalFeeDue || 0}
+          paymentReferenceId={data.clearanceRequest.paymentReferenceId}
+          onClose={() => setShowFeeReceipt(false)}
+        />
       )}
 
     </div>
