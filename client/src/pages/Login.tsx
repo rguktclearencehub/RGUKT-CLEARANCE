@@ -187,7 +187,7 @@ export default function Login() {
             
             {/* Logo Icon */}
             <div className="mb-4">
-              <img src="/logo.png" alt="RGUKT Logo" className="w-20 h-20 object-contain mx-auto" />
+              <img src="/logo.png" alt="RGUKT Logo" className="w-20 h-20 object-contain rounded-full mx-auto" />
             </div>
 
             <h1 className="font-headline-lg text-2xl font-bold text-slate-900 mb-1">
