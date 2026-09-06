@@ -172,7 +172,10 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-[#e2e8f0] flex items-center justify-center p-4 sm:p-6 font-body-md antialiased">
+    <div 
+      className="min-h-screen flex items-center justify-center p-4 sm:p-6 font-body-md antialiased bg-cover bg-center bg-no-repeat"
+      style={{ backgroundImage: "url('/back.jpeg')" }}
+    >
       
       {/* Main Card */}
       <div className="bg-white rounded-[2rem] shadow-2xl flex flex-col w-full max-w-[600px] overflow-hidden min-h-[500px]">
