@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, doc, getDoc, updateDoc, setDoc, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, setDoc, limit, increment } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Users, FileText, Settings, LogOut, Search, Bell, CheckCircle2, AlertCircle, Clock, ShieldCheck, CheckSquare, Printer } from 'lucide-react';
 import NoDueCertificate from '../components/NoDueCertificate';
@@ -11,6 +11,8 @@ export default function DepartmentDashboard() {
   const [selectedClearance, setSelectedClearance] = useState<any>(null);
   const [showCertificate, setShowCertificate] = useState(false);
   const [remarks, setRemarks] = useState('');
+  const [feeAmount, setFeeAmount] = useState('');
+  const [referenceId, setReferenceId] = useState('');
   const [actionType, setActionType] = useState<'APPROVE' | 'REJECT' | null>(null);
   const [departmentName, setDepartmentName] = useState('Department');
   const navigate = useNavigate();
@@ -79,7 +81,8 @@ export default function DepartmentDashboard() {
           requests.push({
             id: d.id,
             ...data,
-            student: studentDetails
+            student: studentDetails,
+            totalFeeDue: crSnap.data().totalFeeDue || 0
           });
         }
       }
@@ -97,32 +100,55 @@ export default function DepartmentDashboard() {
   const handleAction = async () => {
     if (!selectedClearance || !actionType) return;
 
+    if (actionType === 'APPROVE' && departmentName === 'FO' && selectedClearance.totalFeeDue > 0 && !referenceId.trim()) {
+      alert("Please enter the Payment Reference ID to approve this request.");
+      return;
+    }
+
     try {
       const dcRef = doc(db, 'departmentClearances', selectedClearance.id);
       const newStatus = actionType === 'APPROVE' ? 'APPROVED' : 'REJECTED';
+      const feeNum = parseFloat(feeAmount) || 0;
       
-      await updateDoc(dcRef, {
+      const dcUpdateData: any = {
         status: newStatus,
         remarks: remarks || '',
         updatedAt: new Date().toISOString()
-      });
+      };
+      if (feeNum > 0) dcUpdateData.feeDue = feeNum;
+      if (departmentName === 'FO' && referenceId.trim()) dcUpdateData.referenceId = referenceId;
+      
+      await updateDoc(dcRef, dcUpdateData);
       
       const crRef = doc(db, 'clearanceRequests', selectedClearance.requestId);
+      const programType = selectedClearance.student?.program || 'PUC';
+      const currentSequence = programType === 'B.Tech' ? BTECH_DEPARTMENTS : PUC_DEPARTMENTS;
+      const currentIndex = currentSequence.indexOf(departmentName);
+      const isLast = currentIndex === currentSequence.length - 1;
+
+      const crUpdateData: any = { updatedAt: new Date().toISOString() };
+      
       if (newStatus === 'REJECTED') {
-        await updateDoc(crRef, { status: 'REJECTED', updatedAt: new Date().toISOString() });
-      } else if (newStatus === 'APPROVED') {
-        const programType = selectedClearance.student?.program || 'PUC';
-        const currentSequence = programType === 'B.Tech' ? BTECH_DEPARTMENTS : PUC_DEPARTMENTS;
-        const currentIndex = currentSequence.indexOf(departmentName);
-        const isLast = currentIndex === currentSequence.length - 1;
-        if (isLast) {
-          await updateDoc(crRef, { status: 'APPROVED', updatedAt: new Date().toISOString() });
-        }
+        crUpdateData.status = 'REJECTED';
+      } else if (newStatus === 'APPROVED' && isLast) {
+        crUpdateData.status = 'APPROVED';
       }
+
+      if (feeNum > 0 && newStatus === 'APPROVED') {
+        crUpdateData.totalFeeDue = increment(feeNum);
+      }
+
+      if (departmentName === 'FO' && referenceId.trim() && newStatus === 'APPROVED') {
+        crUpdateData.paymentReferenceId = referenceId;
+      }
+      
+      await updateDoc(crRef, crUpdateData);
       
       setSelectedClearance((prev: any) => prev ? { ...prev, status: newStatus } : null);
       setActionType(null);
       setRemarks('');
+      setFeeAmount('');
+      setReferenceId('');
       
       fetchClearances(departmentName);
     } catch (e) {
@@ -439,6 +465,36 @@ export default function DepartmentDashboard() {
                     rows={4}
                   ></textarea>
                 </div>
+                
+                {actionType === 'APPROVE' && ['Physics Lab', 'Chemistry Lab', 'Biology Lab', 'Library', 'IT Infra', 'Scholarship Office'].includes(departmentName) && (
+                  <div>
+                    <label className="block font-label-md text-on-surface mb-2 mt-4">Fee Due Amount (₹)</label>
+                    <input 
+                      type="number"
+                      value={feeAmount}
+                      onChange={e => setFeeAmount(e.target.value)}
+                      placeholder="e.g. 500 (Leave empty if no dues)"
+                      className="w-full border border-outline-variant rounded-xl p-3 text-sm focus:ring-2 focus:ring-secondary-container focus:border-secondary-container outline-none bg-surface-container-lowest"
+                    />
+                  </div>
+                )}
+
+                {actionType === 'APPROVE' && departmentName === 'FO' && selectedClearance.totalFeeDue > 0 && (
+                  <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 mt-4 mb-4">
+                    <h5 className="font-bold text-amber-800 mb-1">Total Student Dues: ₹{selectedClearance.totalFeeDue}</h5>
+                    <p className="text-xs text-amber-700 mb-3">The student must pay this accumulated amount before clearance is granted.</p>
+                    <label className="block font-label-md text-amber-900 mb-2">Payment Reference ID <span className="text-red-500">*</span></label>
+                    <input 
+                      type="text"
+                      required
+                      value={referenceId}
+                      onChange={e => setReferenceId(e.target.value)}
+                      placeholder="e.g. TXN-123456789"
+                      className="w-full border border-amber-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none bg-white"
+                    />
+                  </div>
+                )}
+
                 <div className="flex gap-3 mt-4">
                   <button 
                     onClick={() => setActionType(null)} 

@@ -418,7 +418,14 @@ export default function StudentDashboard() {
           {(request || isInitiating) && (
             <div className="animate-in fade-in duration-500">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="font-headline-md text-2xl font-bold text-primary">Department Status</h3>
+                <div className="flex items-center gap-4">
+                  <h3 className="font-headline-md text-2xl font-bold text-primary">Department Status</h3>
+                  {request && request.totalFeeDue > 0 && (
+                    <span className="font-label-sm font-bold text-amber-700 bg-amber-100 px-3 py-1 rounded-full border border-amber-200 flex items-center gap-1.5 shadow-sm">
+                      Total Dues: ₹{request.totalFeeDue}
+                    </span>
+                  )}
+                </div>
                 {request && (
                   <span className={`font-label-md font-medium ${
                     deps.length === currentDepartments.length && deps.every((d: any) => d.status === 'APPROVED')
