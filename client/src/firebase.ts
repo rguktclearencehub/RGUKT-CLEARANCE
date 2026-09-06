@@ -3,13 +3,13 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyA1ABL-EdckcSt26YZoiqsnqYCSTkyhvt4",
-  authDomain: "rgukt-clearance-hub-a67db.firebaseapp.com",
-  projectId: "rgukt-clearance-hub-a67db",
-  storageBucket: "rgukt-clearance-hub-a67db.firebasestorage.app",
-  messagingSenderId: "864696118096",
-  appId: "1:864696118096:web:b5a8acc726169ab7139a55",
-  measurementId: "G-L12KL523TX"
+  apiKey: "AIzaSyAwIxWKaS1dMhlNs6hRuIrGaZ2vjY9lXu4",
+  authDomain: "rguktclearencehu.firebaseapp.com",
+  projectId: "rguktclearencehu",
+  storageBucket: "rguktclearencehu.firebasestorage.app",
+  messagingSenderId: "15838254933",
+  appId: "1:15838254933:web:768d69b9127b0d16cfc1dc",
+  measurementId: "G-40J5M56CJT"
 };
 
 const app = initializeApp(firebaseConfig);
