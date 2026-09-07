@@ -194,7 +194,9 @@ export default function StudentDashboard() {
             <table width="72" height="72" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 20px auto; background-color: white; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.1); animation: popIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;">
               <tr>
                 <td align="center" valign="middle" style="height: 72px;">
-                  <img src="https://img.icons8.com/ios-filled/50/16a34a/checkmark--v1.png" width="36" height="36" style="display: block; border: 0;" alt="Success" />
+                  <div style="width:72px; height:72px; line-height:72px; text-align:center; border-radius:50%; font-size:40px; color:#16a34a; font-weight:bold;">
+                    &#10003;
+                  </div>
                 </td>
               </tr>
             </table>
