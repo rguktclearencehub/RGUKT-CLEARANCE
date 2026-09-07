@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, CheckSquare, User, FileText, Settings, LogOut, Search, Bell, HelpCircle, Book, Building, Dumbbell, Briefcase, AlertCircle, Clock, CheckCircle2, Send, ShieldCheck, FlaskConical, Microscope, Monitor, Award, UserCog, Lock } from 'lucide-react';
 import { db } from '../firebase';
@@ -40,6 +40,8 @@ export default function StudentDashboard() {
   const [pendingDepartments, setPendingDepartments] = useState<string[]>([]);
   const [showFeeBreakdown, setShowFeeBreakdown] = useState(false);
   const [showFeeReceipt, setShowFeeReceipt] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
   const fetchDashboardData = async () => {
@@ -264,15 +266,87 @@ export default function StudentDashboard() {
       setIsSubmitting(false);
       setSubmitSuccess(true);
       
-      setTimeout(async () => {
-        await fetchDashboardData();
+      setTimeout(() => {
         setSubmitSuccess(false);
-        setIsInitiating(false);
-      }, 1500);
-    } catch (e) {
-      console.error(e);
+        fetchDashboardData();
+      }, 2000);
+    } catch(err) {
+      console.error(err);
+      alert('Failed to submit requests. Please try again.');
       setIsSubmitting(false);
-      alert('Failed to request clearance');
+    }
+  };
+
+  const handleReceiptUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert("File is too large. Please upload a file smaller than 5MB.");
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      const reader = new FileReader();
+      
+      reader.onload = async (event) => {
+        try {
+          const base64Data = event.target?.result;
+          const appsScriptUrl = import.meta.env.VITE_APPS_SCRIPT_WEB_APP_URL;
+          
+          if (!appsScriptUrl) {
+            alert("Upload failed: Web App URL is not configured.");
+            setIsUploading(false);
+            return;
+          }
+
+          const response = await fetch(appsScriptUrl, {
+            method: 'POST',
+            // Use standard cors since Apps Script is configured with doOptions
+            headers: {
+              'Content-Type': 'text/plain;charset=utf-8', // Important: text/plain avoids CORS preflight for simple requests
+            },
+            body: JSON.stringify({
+              filename: file.name,
+              mimeType: file.type,
+              base64: base64Data
+            })
+          });
+
+          const result = await response.json();
+          
+          if (result.status === 'success' && result.url) {
+            // Update the clearance request document in Firestore
+            const crRef = doc(db, 'clearanceRequests', data.clearanceRequest.id);
+            const { updateDoc } = await import('firebase/firestore');
+            await updateDoc(crRef, {
+              feeReceiptUrl: result.url,
+              updatedAt: new Date().toISOString()
+            });
+            
+            alert('Receipt uploaded successfully!');
+            await fetchDashboardData();
+          } else {
+            console.error('Upload failed on server:', result);
+            alert('Failed to upload receipt: ' + (result.message || 'Unknown error'));
+          }
+        } catch (error) {
+          console.error("Error uploading file:", error);
+          alert("Error uploading file. Please ensure the Apps Script URL is correct.");
+        } finally {
+          setIsUploading(false);
+          // Reset file input
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+      };
+      
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error("Upload error:", err);
+      alert("Failed to upload receipt");
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -531,13 +605,49 @@ export default function StudentDashboard() {
                         <span className="text-[10px] bg-green-700 text-green-100 px-1.5 rounded-full ml-1">View Details</span>
                       </button>
                     ) : (
-                      <button 
-                        onClick={() => setShowFeeBreakdown(true)}
-                        className="font-label-sm font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 transition-colors px-3 py-1 rounded-full border border-amber-300 flex items-center gap-1.5 shadow-sm cursor-pointer"
-                      >
-                        Total Dues: ₹{request.totalFeeDue}
-                        <span className="text-[10px] bg-amber-700 text-amber-100 px-1.5 rounded-full ml-1">View Details</span>
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button 
+                          onClick={() => setShowFeeBreakdown(true)}
+                          className="font-label-sm font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 transition-colors px-3 py-1 rounded-full border border-amber-300 flex items-center gap-1.5 shadow-sm cursor-pointer"
+                        >
+                          Total Dues: ₹{request.totalFeeDue}
+                          <span className="text-[10px] bg-amber-700 text-amber-100 px-1.5 rounded-full ml-1">View Details</span>
+                        </button>
+                        
+                        {/* Only show upload if FO is the current pending department */}
+                        {deps.find((d: any) => d.status === 'PENDING')?.departmentName === 'FO' && (
+                          <div className="relative">
+                            <input 
+                              type="file" 
+                              accept="image/*,.pdf" 
+                              className="hidden" 
+                              ref={fileInputRef}
+                              onChange={handleReceiptUpload}
+                              disabled={isUploading}
+                            />
+                            <button 
+                              onClick={() => fileInputRef.current?.click()}
+                              disabled={isUploading}
+                              className="font-label-sm font-bold text-blue-700 bg-blue-100 hover:bg-blue-200 transition-colors px-3 py-1 rounded-full border border-blue-300 flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+                            >
+                              {isUploading ? (
+                                <span className="flex items-center gap-1">
+                                  <div className="w-3 h-3 border-2 border-blue-700 border-t-transparent rounded-full animate-spin"></div>
+                                  Uploading...
+                                </span>
+                              ) : request.feeReceiptUrl ? (
+                                <>
+                                  <CheckCircle2 className="w-4 h-4" /> Receipt Uploaded (Update)
+                                </>
+                              ) : (
+                                <>
+                                  <FileText className="w-4 h-4" /> Upload Receipt
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     )
                   )}
                 </div>

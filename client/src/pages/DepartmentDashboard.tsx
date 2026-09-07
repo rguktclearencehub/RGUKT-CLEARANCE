@@ -198,7 +198,8 @@ export default function DepartmentDashboard() {
             id: d.id,
             ...data,
             student: studentDetails,
-            totalFeeDue: crSnap.data().totalFeeDue || 0
+            totalFeeDue: crSnap.data().totalFeeDue || 0,
+            feeReceiptUrl: crSnap.data().feeReceiptUrl || null
           });
         }
       }
@@ -889,6 +890,18 @@ export default function DepartmentDashboard() {
                   <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 mt-4 mb-4">
                     <h5 className="font-bold text-amber-800 mb-1">Total Student Dues: ₹{selectedClearance.totalFeeDue}</h5>
                     <p className="text-xs text-amber-700 mb-3">The student must pay this accumulated amount before clearance is granted.</p>
+                    {selectedClearance.feeReceiptUrl && (
+                      <div className="mb-4">
+                        <a 
+                          href={selectedClearance.feeReceiptUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 hover:bg-blue-200 px-4 py-2 rounded-lg font-bold text-sm transition-colors border border-blue-300"
+                        >
+                          <FileText className="w-4 h-4" /> View Uploaded Receipt
+                        </a>
+                      </div>
+                    )}
                     <label className="block font-label-md text-amber-900 mb-2">Payment Reference ID <span className="text-red-500">*</span></label>
                     <input 
                       type="text"

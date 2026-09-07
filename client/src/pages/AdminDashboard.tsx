@@ -693,7 +693,19 @@ export default function AdminDashboard() {
             
             <div className="p-8">
               <div className="mb-12">
-                <h4 className="font-headline-sm text-lg font-bold text-primary mb-6">Clearance Flow</h4>
+                <div className="flex items-center justify-between mb-6">
+                  <h4 className="font-headline-sm text-lg font-bold text-primary">Clearance Flow</h4>
+                  {selectedRequest.feeReceiptUrl && (
+                    <a 
+                      href={selectedRequest.feeReceiptUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 hover:bg-blue-200 px-3 py-1.5 rounded-lg font-bold text-xs transition-colors border border-blue-300"
+                    >
+                      <FileText className="w-4 h-4" /> View Fee Receipt
+                    </a>
+                  )}
+                </div>
                 
                 {/* Visual Flow (StudentDashboard Style) */}
                 <div className="w-full pb-10 pt-2 flex justify-center overflow-x-auto no-scrollbar">
