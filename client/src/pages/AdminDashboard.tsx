@@ -4,6 +4,11 @@ import { db } from '../firebase';
 import { collection, getDocs, doc, updateDoc, query, where } from 'firebase/firestore';
 import { LogOut, Search, ShieldAlert, CheckCircle, Clock, AlertTriangle, RefreshCcw, UserCheck, ShieldCheck, LayoutDashboard, Settings, Book, Building, Dumbbell, Briefcase, FlaskConical, Microscope, Monitor, Award, UserCog, CheckSquare, X, CheckCircle2, AlertCircle, Lock, Mail } from 'lucide-react';
 import Bubbles from '../components/Bubbles';
+import emailjs from '@emailjs/browser';
+
+const EMAILJS_SERVICE_ID = 'service_yato66e';
+const EMAILJS_TEMPLATE_ID = 'template_zdq3aos';
+const EMAILJS_PUBLIC_KEY = 'uX0TI21Zg8bha0FM0';
 
 const PUC_DEPARTMENTS = [
   'Hostel', 'Sports', 'Physics Lab', 'Chemistry Lab', 'Biology Lab',
@@ -189,8 +194,99 @@ export default function AdminDashboard() {
         const currentIdx = req.departmentClearances.findIndex((d: any) => d.id === departmentId);
         if (currentIdx !== -1 && currentIdx < req.departmentClearances.length - 1) {
           const nextDepId = req.departmentClearances[currentIdx + 1].id;
+          const nextDepName = req.departmentClearances[currentIdx + 1].departmentName;
           const nextDepRef = doc(db, 'departmentClearances', nextDepId);
           await updateDoc(nextDepRef, { status: 'PENDING', updatedAt: new Date().toISOString() });
+          
+          if (nextDepName === 'FO' && req.totalFeeDue > 0 && req.email) {
+            try {
+              const dcQuery = query(collection(db, 'departmentClearances'), where('requestId', '==', req.id));
+              const dcSnap = await getDocs(dcQuery);
+              
+              let duesHtml = '';
+              dcSnap.forEach(d => {
+                const data = d.data();
+                if (data.feeDue && data.feeDue > 0) {
+                  duesHtml += `
+                    <tr>
+                      <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155;"><strong>${data.departmentName}</strong></td>
+                      <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #64748b;">${data.remarks || 'Dues pending'}</td>
+                      <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #ef4444; font-weight: 600; text-align: right;">₹${data.feeDue}</td>
+                    </tr>
+                  `;
+                }
+              });
+
+              const htmlMessage = `
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+                  <div style="background: linear-gradient(135deg, #ef4444, #dc2626); padding: 24px 20px; text-align: center; color: white;">
+                    <table width="72" height="72" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 20px auto; background-color: white; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                      <tr>
+                        <td align="center" valign="middle" style="height: 72px;">
+                          <img src="https://img.icons8.com/ios-filled/50/dc2626/bill.png" width="36" height="36" style="display: block; border: 0;" alt="Invoice" />
+                        </td>
+                      </tr>
+                    </table>
+                    <h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">Pending Dues Alert</h2>
+                  </div>
+                  <div style="padding: 30px;">
+                    <p style="color: #334155; font-size: 16px; line-height: 1.6; margin-top: 0; margin-bottom: 24px;">
+                      Hello <strong>${studentName}</strong>,<br><br>
+                      Your clearance application has reached the <strong>FO (Accounts) Office</strong>. However, you have pending dues that must be cleared before final approval.
+                    </p>
+                    <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                      <h3 style="margin: 0 0 16px 0; color: #991b1b; font-size: 16px;">Dues Breakdown</h3>
+                      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size: 14px; border-collapse: collapse;">
+                        <thead>
+                          <tr>
+                            <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fca5a5; color: #7f1d1d; text-align: left;">Department</th>
+                            <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fca5a5; color: #7f1d1d; text-align: left;">Reason</th>
+                            <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fca5a5; color: #7f1d1d; text-align: right;">Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${duesHtml}
+                        </tbody>
+                        <tfoot>
+                          <tr>
+                            <td colspan="2" style="padding: 16px 12px 0 12px; color: #334155; font-weight: bold; text-align: right; font-size: 16px;">Grand Total:</td>
+                            <td style="padding: 16px 12px 0 12px; color: #ef4444; font-weight: bold; text-align: right; font-size: 18px;">₹${req.totalFeeDue}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                    <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 16px; margin-bottom: 30px; border-radius: 0 8px 8px 0;">
+                      <p style="margin: 0; color: #92400e; font-size: 15px; font-weight: 500;">
+                        <strong>Action Required:</strong> Please pay the total fee and upload your payment receipt in the student portal to proceed with your clearance.
+                      </p>
+                    </div>
+                    <div style="text-align: center;">
+                      <a href="https://rgukt-clearance.web.app/" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">Pay & Upload Receipt</a>
+                    </div>
+                  </div>
+                  <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+                    <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                      RGUKT Clearance Hub &copy; ${new Date().getFullYear()}<br>
+                      This is an automated message, please do not reply.
+                    </p>
+                  </div>
+                </div>
+              `;
+
+              await emailjs.send(
+                EMAILJS_SERVICE_ID,
+                EMAILJS_TEMPLATE_ID,
+                {
+                  to_name: studentName,
+                  to_email: req.email,
+                  html_message: htmlMessage
+                },
+                EMAILJS_PUBLIC_KEY
+              );
+            } catch (err) {
+              console.error('Failed to send FO notification from Admin:', err);
+            }
+          }
         } else if (currentIdx === req.departmentClearances.length - 1) {
           const crRef = doc(db, 'clearanceRequests', req.id);
           await updateDoc(crRef, { status: 'APPROVED', updatedAt: new Date().toISOString() });
