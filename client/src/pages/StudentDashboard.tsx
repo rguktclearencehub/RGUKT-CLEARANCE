@@ -98,8 +98,7 @@ export default function StudentDashboard() {
     const userStr = localStorage.getItem('user');
     const user = userStr ? JSON.parse(userStr) : {};
     
-    if ((departments.includes('Scholarship Office') && !user.scholarshipId) || !data?.clearanceRequest?.presentHostel) {
-      if (user.scholarshipId) setScholarshipId(user.scholarshipId);
+    if (departments.includes('Scholarship Office') && !user.scholarshipId) {
       setPendingDepartments(departments);
       setShowScholarshipModal(true);
     } else {
@@ -514,7 +513,12 @@ export default function StudentDashboard() {
               <h2 className="font-headline-md text-3xl font-bold text-primary mb-4">Start Your Clearance Journey</h2>
               <p className="font-body-md text-on-surface-variant max-w-md mb-8 text-lg">You haven't initiated your clearance process yet. Send a request to all departments simultaneously to kick off your No-Dues certificate generation.</p>
               <button 
-                onClick={() => setShowProgramModal(true)} 
+                onClick={() => {
+                  const userStr = localStorage.getItem('user');
+                  const user = userStr ? JSON.parse(userStr) : {};
+                  if (user.scholarshipId) setScholarshipId(user.scholarshipId);
+                  setShowProgramModal(true);
+                }} 
                 className="bg-blue-600 text-white px-8 py-4 rounded-xl font-label-md text-lg font-bold shadow-lg hover:bg-blue-700 hover:scale-105 hover:shadow-blue-500/25 transition-all duration-300 flex items-center gap-3"
               >
                 <Send className="w-5 h-5" />
@@ -1053,31 +1057,77 @@ export default function StudentDashboard() {
       {showProgramModal && (
         <div className="fixed inset-0 bg-primary/40 backdrop-blur-sm flex items-center justify-center p-4 z-[300]">
           <div className="bg-surface-container-lowest rounded-2xl p-8 max-w-sm w-full shadow-2xl border border-surface-variant animate-in fade-in zoom-in-95 duration-200">
-            <h3 className="font-headline-md text-xl font-bold text-primary text-center mb-2">Select Your Program</h3>
+            <h3 className="font-headline-md text-xl font-bold text-primary text-center mb-2">Initiate Clearance</h3>
             <p className="font-body-md text-on-surface-variant text-center mb-6">
-              Please confirm your academic program to generate the correct clearance flow.
+              Please confirm your details to generate the correct clearance flow.
             </p>
             <div className="space-y-4 mb-6">
-              <label className="flex items-center gap-3 p-4 border border-outline-variant rounded-xl cursor-pointer hover:bg-surface-variant/20 transition-colors">
-                <input type="radio" name="program" value="PUC" checked={selectedProgram === 'PUC'} onChange={() => setSelectedProgram('PUC')} className="w-5 h-5 text-blue-600 focus:ring-blue-500" />
-                <span className="font-label-md font-bold text-primary">PUC (Pre-University Course)</span>
-              </label>
-              <label className="flex items-center gap-3 p-4 border border-outline-variant rounded-xl cursor-pointer hover:bg-surface-variant/20 transition-colors">
-                <input type="radio" name="program" value="B.Tech" checked={selectedProgram === 'B.Tech'} onChange={() => setSelectedProgram('B.Tech')} className="w-5 h-5 text-blue-600 focus:ring-blue-500" />
-                <span className="font-label-md font-bold text-primary">B.Tech (Engineering)</span>
-              </label>
+              <div>
+                <label className="block text-sm font-semibold text-primary mb-2">Program <span className="text-red-500">*</span></label>
+                <div className="flex gap-2">
+                  <label className="flex-1 flex items-center justify-center gap-2 p-3 border border-outline-variant rounded-xl cursor-pointer hover:bg-surface-variant/20 transition-colors bg-surface">
+                    <input type="radio" name="program" value="PUC" checked={selectedProgram === 'PUC'} onChange={() => setSelectedProgram('PUC')} className="w-4 h-4 text-blue-600" />
+                    <span className="font-label-md font-bold text-primary">PUC</span>
+                  </label>
+                  <label className="flex-1 flex items-center justify-center gap-2 p-3 border border-outline-variant rounded-xl cursor-pointer hover:bg-surface-variant/20 transition-colors bg-surface">
+                    <input type="radio" name="program" value="B.Tech" checked={selectedProgram === 'B.Tech'} onChange={() => setSelectedProgram('B.Tech')} className="w-4 h-4 text-blue-600" />
+                    <span className="font-label-md font-bold text-primary">B.Tech</span>
+                  </label>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-semibold text-primary mb-2">Scholarship ID <span className="text-red-500">*</span></label>
+                <input 
+                  type="text" 
+                  required
+                  minLength={12}
+                  maxLength={12}
+                  placeholder="e.g. SCH202412345"
+                  className="w-full px-4 py-3 rounded-xl border border-outline-variant bg-surface focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                  value={scholarshipId}
+                  onChange={(e) => setScholarshipId(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-primary mb-2">Present Hostel <span className="text-red-500">*</span></label>
+                <select 
+                  value={selectedHostel}
+                  onChange={(e) => setSelectedHostel(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-outline-variant bg-surface focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                  required
+                >
+                  <option value="" disabled>Select your hostel</option>
+                  <option value="Old campus">Old campus</option>
+                  <option value="BH1 front side">BH1 front side</option>
+                  <option value="BH1 Back side">BH1 Back side</option>
+                  <option value="BH2 Front side">BH2 Front side</option>
+                  <option value="BH2 Backside">BH2 Backside</option>
+                </select>
+              </div>
             </div>
             <div className="flex gap-4">
               <button onClick={() => setShowProgramModal(false)} className="flex-1 bg-surface-variant text-on-surface-variant py-3 rounded-xl font-label-md font-semibold hover:bg-outline-variant/30 transition-colors">Cancel</button>
               <button 
+                disabled={scholarshipId.length !== 12 || !selectedHostel}
                 onClick={async () => { 
                   setShowProgramModal(false); 
                   try {
-                    const user = JSON.parse(localStorage.getItem('user') || '{}');
+                    const userStr = localStorage.getItem('user');
+                    const user = userStr ? JSON.parse(userStr) : {};
+                    
+                    // Save Scholarship ID to user profile
+                    const userRef = doc(db, 'students', user.id);
+                    await setDoc(userRef, { scholarshipId }, { merge: true });
+                    const updatedUser = { ...user, scholarshipId };
+                    localStorage.setItem('user', JSON.stringify(updatedUser));
+                    
                     const crRef = doc(collection(db, 'clearanceRequests'));
                     await setDoc(crRef, {
                       studentId: user.id,
                       programType: selectedProgram,
+                      presentHostel: selectedHostel,
                       status: 'PENDING',
                       createdAt: new Date().toISOString(),
                       updatedAt: new Date().toISOString()
@@ -1087,7 +1137,7 @@ export default function StudentDashboard() {
                     console.error(e);
                   }
                 }} 
-                className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-label-md font-semibold hover:bg-blue-700 transition-colors shadow-md"
+                className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-label-md font-semibold hover:bg-blue-700 transition-colors shadow-md disabled:opacity-50"
               >
                 Confirm
               </button>
@@ -1145,22 +1195,6 @@ export default function StudentDashboard() {
                 />
                 <p className="text-xs text-on-surface-variant mt-2">Must be exactly 12 characters.</p>
               </div>
-              <div className="mb-6">
-                <label className="block text-sm font-semibold text-primary mb-2">Present Hostel <span className="text-red-500">*</span></label>
-                <select 
-                  value={selectedHostel}
-                  onChange={(e) => setSelectedHostel(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-outline-variant bg-surface focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                  required
-                >
-                  <option value="" disabled>Select your hostel</option>
-                  <option value="Old campus">Old campus</option>
-                  <option value="BH1 front side">BH1 front side</option>
-                  <option value="BH1 Back side">BH1 Back side</option>
-                  <option value="BH2 Front side">BH2 Front side</option>
-                  <option value="BH2 Backside">BH2 Backside</option>
-                </select>
-              </div>
               <div className="flex gap-4">
                 <button 
                   type="button"
@@ -1171,7 +1205,7 @@ export default function StudentDashboard() {
                 </button>
                 <button 
                   type="submit"
-                  disabled={scholarshipId.length !== 12 || !selectedHostel}
+                  disabled={scholarshipId.length !== 12}
                   className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-label-md font-semibold hover:bg-blue-700 transition-colors shadow-md disabled:opacity-50"
                 >
                   Save & Continue
