@@ -199,6 +199,7 @@ export default function AdminDashboard() {
         req.studentName = studentInfo.name || 'Unknown';
         req.actualStudentId = studentInfo.studentId || req.studentId;
         req.email = studentInfo.email || '';
+        req.presentHostel = req.presentHostel || null;
         
         // Attach department clearances to the request
         const deps = dcData.filter((d: any) => d.requestId === req.id);
@@ -684,7 +685,7 @@ export default function AdminDashboard() {
             <div className="sticky top-0 bg-surface/80 backdrop-blur-md p-6 border-b border-surface-variant flex justify-between items-center z-10">
               <div>
                 <h3 className="font-headline-md text-2xl font-bold text-primary">{selectedRequest.studentName}</h3>
-                <p className="font-body-sm text-on-surface-variant">ID: {selectedRequest.actualStudentId} • {selectedRequest.programType || 'B.Tech'}</p>
+                <p className="font-body-sm text-on-surface-variant">ID: {selectedRequest.actualStudentId} • {selectedRequest.programType || 'B.Tech'}{selectedRequest.presentHostel ? ` • Hostel: ${selectedRequest.presentHostel}` : ''}</p>
               </div>
               <button onClick={() => setSelectedRequest(null)} className="p-2 rounded-full hover:bg-surface-variant transition-colors text-on-surface-variant">
                 <X className="w-6 h-6" />

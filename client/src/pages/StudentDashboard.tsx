@@ -35,6 +35,7 @@ export default function StudentDashboard() {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [showProgramModal, setShowProgramModal] = useState(false);
   const [selectedProgram, setSelectedProgram] = useState<'PUC' | 'B.Tech'>('PUC');
+  const [selectedHostel, setSelectedHostel] = useState('');
   const [showScholarshipModal, setShowScholarshipModal] = useState(false);
   const [scholarshipId, setScholarshipId] = useState('');
   const [pendingDepartments, setPendingDepartments] = useState<string[]>([]);
@@ -1048,7 +1049,7 @@ export default function StudentDashboard() {
           <div className="bg-surface-container-lowest rounded-2xl p-8 max-w-sm w-full shadow-2xl border border-surface-variant animate-in fade-in zoom-in-95 duration-200">
             <h3 className="font-headline-md text-xl font-bold text-primary text-center mb-2">Select Your Program</h3>
             <p className="font-body-md text-on-surface-variant text-center mb-6">
-              Please confirm your academic program to generate the correct clearance flow.
+              Please confirm your academic program and present hostel to generate the correct clearance flow.
             </p>
             <div className="space-y-4 mb-6">
               <label className="flex items-center gap-3 p-4 border border-outline-variant rounded-xl cursor-pointer hover:bg-surface-variant/20 transition-colors">
@@ -1059,10 +1060,28 @@ export default function StudentDashboard() {
                 <input type="radio" name="program" value="B.Tech" checked={selectedProgram === 'B.Tech'} onChange={() => setSelectedProgram('B.Tech')} className="w-5 h-5 text-blue-600 focus:ring-blue-500" />
                 <span className="font-label-md font-bold text-primary">B.Tech (Engineering)</span>
               </label>
+              
+              <div className="mt-4">
+                <label className="block text-sm font-semibold text-primary mb-2">Present Hostel <span className="text-red-500">*</span></label>
+                <select 
+                  value={selectedHostel}
+                  onChange={(e) => setSelectedHostel(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-outline-variant bg-surface focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                  required
+                >
+                  <option value="" disabled>Select your hostel</option>
+                  <option value="Old campus">Old campus</option>
+                  <option value="BH1 front side">BH1 front side</option>
+                  <option value="BH1 Back side">BH1 Back side</option>
+                  <option value="BH2 Front side">BH2 Front side</option>
+                  <option value="BH2 Backside">BH2 Backside</option>
+                </select>
+              </div>
             </div>
             <div className="flex gap-4">
               <button onClick={() => setShowProgramModal(false)} className="flex-1 bg-surface-variant text-on-surface-variant py-3 rounded-xl font-label-md font-semibold hover:bg-outline-variant/30 transition-colors">Cancel</button>
               <button 
+                disabled={!selectedHostel}
                 onClick={async () => { 
                   setShowProgramModal(false); 
                   try {
@@ -1071,6 +1090,7 @@ export default function StudentDashboard() {
                     await setDoc(crRef, {
                       studentId: user.id,
                       programType: selectedProgram,
+                      presentHostel: selectedHostel,
                       status: 'PENDING',
                       createdAt: new Date().toISOString(),
                       updatedAt: new Date().toISOString()
@@ -1080,7 +1100,7 @@ export default function StudentDashboard() {
                     console.error(e);
                   }
                 }} 
-                className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-label-md font-semibold hover:bg-blue-700 transition-colors shadow-md"
+                className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-label-md font-semibold hover:bg-blue-700 transition-colors shadow-md disabled:opacity-50"
               >
                 Confirm
               </button>

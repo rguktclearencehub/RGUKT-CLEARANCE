@@ -199,7 +199,8 @@ export default function DepartmentDashboard() {
             ...data,
             student: studentDetails,
             totalFeeDue: crSnap.data().totalFeeDue || 0,
-            feeReceiptUrl: crSnap.data().feeReceiptUrl || null
+            feeReceiptUrl: crSnap.data().feeReceiptUrl || null,
+            presentHostel: crSnap.data().presentHostel || null
           });
         }
       }
@@ -745,6 +746,12 @@ export default function DepartmentDashboard() {
                 <div className="flex justify-between pb-3 border-b border-surface-variant/50">
                   <span className="text-on-surface-variant font-label-md">Scholarship ID:</span>
                   <span className="font-bold text-primary">{selectedClearance.student.scholarshipId}</span>
+                </div>
+              )}
+              {departmentName === 'Hostel' && selectedClearance.presentHostel && (
+                <div className="flex justify-between pb-3 border-b border-surface-variant/50">
+                  <span className="text-on-surface-variant font-label-md">Present Hostel:</span>
+                  <span className="font-bold text-primary">{selectedClearance.presentHostel}</span>
                 </div>
               )}
               <div className="flex justify-between">
