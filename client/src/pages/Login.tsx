@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, EyeOff, ArrowRight } from 'lucide-react';
 import { auth, googleProvider, db } from '../firebase';
 import { signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc, writeBatch, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, writeBatch, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 
 const KNOWN_DEPARTMENT_EMAILS = [
   'hostel@university.edu',
@@ -82,10 +82,15 @@ export default function Login() {
       if (!userSnap.exists()) {
         const batch = writeBatch(db);
         
+        let userRole = loginType === 'student' ? 'STUDENT' : 'DEPARTMENT';
+        if (user.email && user.email.toLowerCase().startsWith('admin')) {
+          userRole = 'ADMIN';
+        }
+
         userData = {
           email: user.email,
           name: user.email?.split('@')[0] || 'Unknown',
-          role: loginType === 'student' ? 'STUDENT' : 'DEPARTMENT',
+          role: userRole,
           createdAt: new Date().toISOString()
         };
         batch.set(userRef, userData);
@@ -108,6 +113,12 @@ export default function Login() {
         if (user.email && KNOWN_DEPARTMENT_EMAILS.includes(user.email.toLowerCase()) && userData.role !== 'DEPARTMENT') {
           userData.role = 'DEPARTMENT';
           await updateDoc(userRef, { role: 'DEPARTMENT' });
+        }
+        
+        // Auto-fix admin role
+        if (user.email && user.email.toLowerCase().startsWith('admin') && userData.role !== 'ADMIN') {
+          userData.role = 'ADMIN';
+          await updateDoc(userRef, { role: 'ADMIN' });
         }
       }
       
@@ -135,6 +146,13 @@ export default function Login() {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
       
+      const emailLower = user.email?.trim().toLowerCase() || '';
+      if (!(emailLower.endsWith('@rgukt.ac.in') || emailLower.endsWith('@rguktrkv.ac.in'))) {
+        const rejectedEmail = user.email;
+        await auth.signOut();
+        throw new Error(`Email "${rejectedEmail}" is not allowed. Please use your @rgukt.ac.in or @rguktrkv.ac.in account.`);
+      }
+      
       const userRef = doc(db, 'users', user.uid);
       const userSnap = await getDoc(userRef);
       
@@ -142,10 +160,20 @@ export default function Login() {
       
       if (!userSnap.exists()) {
         const batch = writeBatch(db);
+        const extractedId = user.email?.split('@')[0].toUpperCase() || '';
+        
+        const q = query(collection(db, 'students'), where('Collage ID', '==', extractedId));
+        const querySnapshot = await getDocs(q);
+        
+        let fetchedName = user.displayName || user.email?.split('@')[0] || 'Unknown';
+        if (!querySnapshot.empty) {
+          const studentDoc = querySnapshot.docs[0].data();
+          if (studentDoc.Name) fetchedName = studentDoc.Name;
+        }
         
         userData = {
           email: user.email,
-          name: user.displayName || user.email?.split('@')[0] || 'Unknown',
+          name: fetchedName,
           role: loginType === 'student' ? 'STUDENT' : 'DEPARTMENT',
           createdAt: new Date().toISOString()
         };
@@ -155,7 +183,7 @@ export default function Login() {
           const studentRef = doc(db, 'students', user.uid);
           batch.set(studentRef, {
             userId: user.uid,
-            studentId: `G-${Math.floor(Math.random() * 1000000)}`,
+            studentId: extractedId || `G-${Math.floor(Math.random() * 1000000)}`,
             program: 'B.Tech',
             year: 1,
           });

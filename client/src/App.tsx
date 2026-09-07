@@ -3,6 +3,7 @@ import Landing from './pages/Landing';
 import Login from './pages/Login';
 import StudentDashboard from './pages/StudentDashboard';
 import DepartmentDashboard from './pages/DepartmentDashboard';
+import AdminDashboard from './pages/AdminDashboard';
 import Bubbles from './components/Bubbles';
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/student/dashboard" element={<StudentDashboard />} />
         <Route path="/department/dashboard" element={<DepartmentDashboard />} />
+        <Route path="/admin/dashboard" element={<AdminDashboard />} />
       </Routes>
     </Router>
     </>

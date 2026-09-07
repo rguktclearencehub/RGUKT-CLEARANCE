@@ -2,9 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, CheckSquare, User, FileText, Settings, LogOut, Search, Bell, HelpCircle, Book, Building, Dumbbell, Briefcase, AlertCircle, Clock, CheckCircle2, Send, ShieldCheck, FlaskConical, Microscope, Monitor, Award, UserCog, Lock } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, doc, writeBatch, limit, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, writeBatch, limit, setDoc } from 'firebase/firestore';
+import emailjs from '@emailjs/browser';
 import NoDueCertificate from '../components/NoDueCertificate';
 import FeeReceipt from '../components/FeeReceipt';
+
+const EMAILJS_SERVICE_ID = 'service_yato66e';
+const EMAILJS_PUBLIC_KEY = 'uX0TI21Zg8bha0FM0';
+// TODO: Replace this with your new Template ID for the submission email
+const EMAILJS_SUBMISSION_TEMPLATE_ID = 'template_zdq3aos';
 
 const PUC_DEPARTMENTS = [
   'Hostel', 'Sports', 'Physics Lab', 'Chemistry Lab', 'Biology Lab',
@@ -47,6 +53,14 @@ export default function StudentDashboard() {
     try {
       const studentData: any = { id: user.id, ...user };
       
+      const studentDocRef = doc(db, 'students', user.id);
+      const studentSnap = await getDoc(studentDocRef);
+      if (studentSnap.exists()) {
+        const sData = studentSnap.data();
+        if (sData.studentId) studentData.studentId = sData.studentId;
+        if (sData.program) studentData.program = sData.program;
+      }
+      
       const crQuery = query(collection(db, 'clearanceRequests'), where('studentId', '==', user.id), limit(1));
       const crSnap = await getDocs(crQuery);
       
@@ -56,7 +70,14 @@ export default function StudentDashboard() {
         
         const dcQuery = query(collection(db, 'departmentClearances'), where('requestId', '==', crDoc.id));
         const dcSnap = await getDocs(dcQuery);
-        studentData.clearanceRequest.departmentClearances = dcSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const deps = dcSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        studentData.clearanceRequest.departmentClearances = deps;
+
+        // Automatically show popup if there's a rejected department
+        const rejectedDept = deps.find((d: any) => d.status === 'REJECTED');
+        if (rejectedDept) {
+          setSelectedDept(rejectedDept);
+        }
       }
       
       setData(studentData);
@@ -155,6 +176,88 @@ export default function StudentDashboard() {
       }
       
       await batch.commit();
+
+      // Generate Beautiful HTML Email Notification with Green Theme
+      const htmlMessage = `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 0; border: 1px solid #dcfce7; border-radius: 12px; background-color: #ffffff; overflow: hidden; box-shadow: 0 4px 15px rgba(22, 163, 74, 0.1);">
+          
+          <!-- Header with Green Gradient and Animation -->
+          <div style="background: linear-gradient(135deg, #22c55e, #16a34a); padding: 24px 20px; text-align: center; color: white;">
+            <!-- Simple CSS for email animation (works in modern clients like Apple Mail, fallback to static in Gmail) -->
+            <style>
+              @keyframes popIn {
+                0% { transform: scale(0); opacity: 0; }
+                80% { transform: scale(1.1); opacity: 1; }
+                100% { transform: scale(1); opacity: 1; }
+              }
+            </style>
+            <table width="72" height="72" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 20px auto; background-color: white; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.1); animation: popIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;">
+              <tr>
+                <td align="center" valign="middle" style="height: 72px;">
+                  <img src="https://img.icons8.com/ios-filled/50/16a34a/checkmark--v1.png" width="36" height="36" style="display: block; border: 0;" alt="Success" />
+                </td>
+              </tr>
+            </table>
+            <h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">Application Submitted!</h2>
+          </div>
+          
+          <div style="padding: 30px;">
+            <p style="color: #334155; font-size: 16px; line-height: 1.6; margin-top: 0; margin-bottom: 24px;">
+              Hello <strong>${user.name}</strong>,<br><br>
+              Great news! Your clearance application has been successfully initiated and is now in the system.
+            </p>
+            
+            <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+              <p style="margin: 0 0 10px 0; color: #334155; font-size: 14px;"><strong>Student Name:</strong> ${user.name}</p>
+              <p style="margin: 0 0 10px 0; color: #334155; font-size: 14px;"><strong>Student ID:</strong> ${data?.studentId || user.id}</p>
+              <p style="margin: 0 0 10px 0; color: #334155; font-size: 14px;"><strong>Email:</strong> ${user.email}</p>
+              <p style="margin: 0 0 10px 0; color: #334155; font-size: 14px;"><strong>Program:</strong> ${programType || data?.program || 'PUC'}</p>
+              <p style="margin: 0 0 10px 0; color: #334155; font-size: 14px;"><strong>Submitted On:</strong> ${new Date().toLocaleString()}</p>
+              <p style="margin: 0; color: #334155; font-size: 14px;"><strong>Current Status:</strong> <span style="background-color: #dcfce7; padding: 2px 8px; border-radius: 12px; font-weight: 600; color: #16a34a;">Pending at ${departments[0]}</span></p>
+            </div>
+            
+            <div style="margin-bottom: 24px;">
+              <p style="margin: 0 0 8px 0; color: #475569; font-size: 14px; font-weight: 600;">Your Clearance Path:</p>
+              <p style="margin: 0; color: #64748b; font-size: 13px; line-height: 1.6; padding: 12px; background-color: #f8fafc; border-radius: 6px;">
+                ${departments.join(' &rarr; ')}
+              </p>
+            </div>
+            
+            <div style="text-align: center; margin-top: 30px;">
+              <a href="https://rgukt-clearance.web.app/" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(22, 163, 74, 0.2);">Track Application Status</a>
+            </div>
+          </div>
+          
+          <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              RGUKT Clearance Hub<br>
+              This is an automated message, please do not reply.
+            </p>
+          </div>
+        </div>
+      `;
+
+      // Send EmailJS Notification
+      try {
+        if (user.email) {
+          await emailjs.send(
+            EMAILJS_SERVICE_ID,
+            EMAILJS_SUBMISSION_TEMPLATE_ID,
+            {
+              to_name: user.name,
+              to_email: user.email,
+              html_message: htmlMessage
+            },
+            EMAILJS_PUBLIC_KEY
+          );
+          console.log('Submission email sent successfully!');
+        } else {
+          console.error("User email is missing");
+        }
+      } catch (emailErr: any) {
+        console.error('Failed to send submission email:', emailErr);
+        alert('Email sending failed! Error: ' + (emailErr.text || emailErr.message || JSON.stringify(emailErr)));
+      }
       
       setIsSubmitting(false);
       setSubmitSuccess(true);
@@ -293,25 +396,27 @@ export default function StudentDashboard() {
       <div className="flex-1 ml-64 flex flex-col min-h-screen">
         
         {/* TopNavBar Component */}
-        <header className="bg-surface/80 top-0 sticky backdrop-blur-md border-b border-outline-variant/20 shadow-sm flex justify-between items-center h-16 px-8 z-40">
-          <div className="flex-1 max-w-md">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-outline w-5 h-5" />
-              <input className="w-full pl-10 pr-4 py-2 bg-surface-container-lowest border border-outline-variant/50 rounded-lg text-sm focus:outline-none focus:border-secondary-container focus:ring-1 focus:ring-secondary-container transition-colors" placeholder="Search departments, documents..." type="text" />
+        {activeTab !== 'profile' && (
+          <header className="bg-surface/80 top-0 sticky backdrop-blur-md border-b border-outline-variant/20 shadow-sm flex justify-between items-center h-16 px-8 z-40">
+            <div className="flex-1 max-w-md">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-outline w-5 h-5" />
+                <input className="w-full pl-10 pr-4 py-2 bg-surface-container-lowest border border-outline-variant/50 rounded-lg text-sm focus:outline-none focus:border-secondary-container focus:ring-1 focus:ring-secondary-container transition-colors" placeholder="Search departments, documents..." type="text" />
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <button className="text-on-surface-variant hover:text-secondary p-2 rounded-full hover:bg-surface-variant/50">
-              <Bell className="w-5 h-5" />
-            </button>
-            <button className="text-on-surface-variant hover:text-secondary p-2 rounded-full hover:bg-surface-variant/50">
-              <HelpCircle className="w-5 h-5" />
-            </button>
-            <div className="w-9 h-9 rounded-full bg-primary-fixed overflow-hidden border border-outline-variant/30 ml-2 cursor-pointer flex items-center justify-center text-primary font-bold">
-              {data.user?.name?.charAt(0) || 'S'}
+            <div className="flex items-center gap-4">
+              <button className="text-on-surface-variant hover:text-secondary p-2 rounded-full hover:bg-surface-variant/50">
+                <Bell className="w-5 h-5" />
+              </button>
+              <button className="text-on-surface-variant hover:text-secondary p-2 rounded-full hover:bg-surface-variant/50">
+                <HelpCircle className="w-5 h-5" />
+              </button>
+              <div className="w-9 h-9 rounded-full bg-primary-fixed overflow-hidden border border-outline-variant/30 ml-2 cursor-pointer flex items-center justify-center text-primary font-bold">
+                {data.user?.name?.charAt(0) || 'S'}
+              </div>
             </div>
-          </div>
-        </header>
+          </header>
+        )}
 
         {/* Page Content */}
         <main className="flex-1 p-8 max-w-[1440px] mx-auto w-full overflow-hidden">
@@ -619,16 +724,22 @@ export default function StudentDashboard() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-surface rounded-2xl p-6 border border-surface-variant shadow-sm">
                   <div className="w-24 h-24 bg-primary text-on-primary rounded-full flex items-center justify-center text-4xl font-bold mb-8 mx-auto shadow-md">
-                    {data.name?.charAt(0) || data.email?.charAt(0) || 'S'}
+                    {((data.name || data.email?.split('@')[0])
+                        .replace(new RegExp(`^${data.studentId || data.id}\\s*`, 'i'), '')
+                        .trim().charAt(0) || 'S').toUpperCase()}
                   </div>
                   <div className="space-y-5 text-center sm:text-left">
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center sm:border-b sm:border-surface-variant sm:pb-3">
                       <p className="text-xs font-label-sm text-outline uppercase tracking-wider mb-1 sm:mb-0">Full Name</p>
-                      <p className="font-headline-sm text-lg font-bold text-primary">{data.name || data.email?.split('@')[0]}</p>
+                      <p className="font-headline-sm text-lg font-bold text-primary">
+                        {(data.name || data.email?.split('@')[0])
+                          .replace(new RegExp(`^${data.studentId || data.id}\\s*`, 'i'), '')
+                          .trim()}
+                      </p>
                     </div>
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center sm:border-b sm:border-surface-variant sm:pb-3">
                       <p className="text-xs font-label-sm text-outline uppercase tracking-wider mb-1 sm:mb-0">Student ID</p>
-                      <p className="font-body-md text-on-surface-variant font-medium">{data.id}</p>
+                      <p className="font-body-md text-on-surface-variant font-medium">{data.studentId || data.id}</p>
                     </div>
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center sm:border-b sm:border-surface-variant sm:pb-3">
                       <p className="text-xs font-label-sm text-outline uppercase tracking-wider mb-1 sm:mb-0">Email Address</p>
@@ -733,6 +844,35 @@ export default function StudentDashboard() {
                 <button 
                   onClick={() => setSelectedDept(null)} 
                   className="flex-1 bg-primary-container text-on-primary py-3 rounded-xl font-label-md font-semibold hover:scale-[1.02] transition-transform duration-300 shadow-md"
+                >
+                  Close
+                </button>
+              </div>
+            ) : selectedDept.status === 'REJECTED' ? (
+              <div className="flex gap-4">
+                <button 
+                  onClick={async () => {
+                    try {
+                      setIsSubmitting(true);
+                      const { updateDoc } = await import('firebase/firestore');
+                      const dcRef = doc(db, 'departmentClearances', selectedDept.id);
+                      await updateDoc(dcRef, { status: 'PENDING' });
+                      await fetchDashboardData();
+                      setSelectedDept(null);
+                    } catch (err) {
+                      console.error(err);
+                      alert('Failed to request again');
+                    } finally {
+                      setIsSubmitting(false);
+                    }
+                  }}
+                  className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-label-md font-semibold hover:bg-blue-700 transition-colors shadow-md"
+                >
+                  Request Again
+                </button>
+                <button 
+                  onClick={() => setSelectedDept(null)} 
+                  className="flex-1 bg-surface-variant text-on-surface-variant py-3 rounded-xl font-label-md font-semibold hover:bg-outline-variant/30 transition-colors shadow-sm"
                 >
                   Close
                 </button>
