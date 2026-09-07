@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, CheckSquare, User, FileText, Settings, LogOut, Search, Bell, HelpCircle, Book, Building, Dumbbell, Briefcase, AlertCircle, Clock, CheckCircle2, Send, ShieldCheck, FlaskConical, Microscope, Monitor, Award, UserCog, Lock } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, doc, getDoc, writeBatch, limit, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, writeBatch, limit, setDoc, updateDoc } from 'firebase/firestore';
 import emailjs from '@emailjs/browser';
 import NoDueCertificate from '../components/NoDueCertificate';
 import FeeReceipt from '../components/FeeReceipt';
@@ -98,7 +98,8 @@ export default function StudentDashboard() {
     const userStr = localStorage.getItem('user');
     const user = userStr ? JSON.parse(userStr) : {};
     
-    if (departments.includes('Scholarship Office') && !user.scholarshipId) {
+    if ((departments.includes('Scholarship Office') && !user.scholarshipId) || !data?.clearanceRequest?.presentHostel) {
+      if (user.scholarshipId) setScholarshipId(user.scholarshipId);
       setPendingDepartments(departments);
       setShowScholarshipModal(true);
     } else {
@@ -116,6 +117,11 @@ export default function StudentDashboard() {
     try {
       const userRef = doc(db, 'students', user.id);
       await setDoc(userRef, { scholarshipId }, { merge: true });
+      
+      if (data?.clearanceRequest?.id && selectedHostel) {
+        const crRef = doc(db, 'clearanceRequests', data.clearanceRequest.id);
+        await updateDoc(crRef, { presentHostel: selectedHostel });
+      }
       
       const updatedUser = { ...user, scholarshipId };
       localStorage.setItem('user', JSON.stringify(updatedUser));
@@ -1049,7 +1055,7 @@ export default function StudentDashboard() {
           <div className="bg-surface-container-lowest rounded-2xl p-8 max-w-sm w-full shadow-2xl border border-surface-variant animate-in fade-in zoom-in-95 duration-200">
             <h3 className="font-headline-md text-xl font-bold text-primary text-center mb-2">Select Your Program</h3>
             <p className="font-body-md text-on-surface-variant text-center mb-6">
-              Please confirm your academic program and present hostel to generate the correct clearance flow.
+              Please confirm your academic program to generate the correct clearance flow.
             </p>
             <div className="space-y-4 mb-6">
               <label className="flex items-center gap-3 p-4 border border-outline-variant rounded-xl cursor-pointer hover:bg-surface-variant/20 transition-colors">
@@ -1060,28 +1066,10 @@ export default function StudentDashboard() {
                 <input type="radio" name="program" value="B.Tech" checked={selectedProgram === 'B.Tech'} onChange={() => setSelectedProgram('B.Tech')} className="w-5 h-5 text-blue-600 focus:ring-blue-500" />
                 <span className="font-label-md font-bold text-primary">B.Tech (Engineering)</span>
               </label>
-              
-              <div className="mt-4">
-                <label className="block text-sm font-semibold text-primary mb-2">Present Hostel <span className="text-red-500">*</span></label>
-                <select 
-                  value={selectedHostel}
-                  onChange={(e) => setSelectedHostel(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-outline-variant bg-surface focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                  required
-                >
-                  <option value="" disabled>Select your hostel</option>
-                  <option value="Old campus">Old campus</option>
-                  <option value="BH1 front side">BH1 front side</option>
-                  <option value="BH1 Back side">BH1 Back side</option>
-                  <option value="BH2 Front side">BH2 Front side</option>
-                  <option value="BH2 Backside">BH2 Backside</option>
-                </select>
-              </div>
             </div>
             <div className="flex gap-4">
               <button onClick={() => setShowProgramModal(false)} className="flex-1 bg-surface-variant text-on-surface-variant py-3 rounded-xl font-label-md font-semibold hover:bg-outline-variant/30 transition-colors">Cancel</button>
               <button 
-                disabled={!selectedHostel}
                 onClick={async () => { 
                   setShowProgramModal(false); 
                   try {
@@ -1090,7 +1078,6 @@ export default function StudentDashboard() {
                     await setDoc(crRef, {
                       studentId: user.id,
                       programType: selectedProgram,
-                      presentHostel: selectedHostel,
                       status: 'PENDING',
                       createdAt: new Date().toISOString(),
                       updatedAt: new Date().toISOString()
@@ -1100,7 +1087,7 @@ export default function StudentDashboard() {
                     console.error(e);
                   }
                 }} 
-                className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-label-md font-semibold hover:bg-blue-700 transition-colors shadow-md disabled:opacity-50"
+                className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-label-md font-semibold hover:bg-blue-700 transition-colors shadow-md"
               >
                 Confirm
               </button>
@@ -1138,9 +1125,9 @@ export default function StudentDashboard() {
             <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Award className="w-8 h-8 text-blue-600" />
             </div>
-            <h3 className="font-headline-md text-xl font-bold text-primary text-center mb-2">Scholarship Details</h3>
+            <h3 className="font-headline-md text-xl font-bold text-primary text-center mb-2">Additional Details</h3>
             <p className="font-body-md text-on-surface-variant text-center mb-6">
-              The Scholarship Office requires your unique Scholarship ID to process your clearance.
+              Please provide the following details to process your clearance.
             </p>
             <form onSubmit={handleScholarshipSubmit}>
               <div className="mb-6">
@@ -1158,6 +1145,22 @@ export default function StudentDashboard() {
                 />
                 <p className="text-xs text-on-surface-variant mt-2">Must be exactly 12 characters.</p>
               </div>
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-primary mb-2">Present Hostel <span className="text-red-500">*</span></label>
+                <select 
+                  value={selectedHostel}
+                  onChange={(e) => setSelectedHostel(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-outline-variant bg-surface focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                  required
+                >
+                  <option value="" disabled>Select your hostel</option>
+                  <option value="Old campus">Old campus</option>
+                  <option value="BH1 front side">BH1 front side</option>
+                  <option value="BH1 Back side">BH1 Back side</option>
+                  <option value="BH2 Front side">BH2 Front side</option>
+                  <option value="BH2 Backside">BH2 Backside</option>
+                </select>
+              </div>
               <div className="flex gap-4">
                 <button 
                   type="button"
@@ -1168,7 +1171,7 @@ export default function StudentDashboard() {
                 </button>
                 <button 
                   type="submit"
-                  disabled={scholarshipId.length !== 12}
+                  disabled={scholarshipId.length !== 12 || !selectedHostel}
                   className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-label-md font-semibold hover:bg-blue-700 transition-colors shadow-md disabled:opacity-50"
                 >
                   Save & Continue
