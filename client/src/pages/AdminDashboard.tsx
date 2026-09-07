@@ -71,6 +71,71 @@ const MOCK_SUBMISSION_TEMPLATE = `
   </div>
 `;
 
+const MOCK_FO_DUES_TEMPLATE = `
+  <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+    <div style="background: linear-gradient(135deg, #ef4444, #dc2626); padding: 24px 20px; text-align: center; color: white;">
+      <table width="72" height="72" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 20px auto; background-color: white; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+        <tr>
+          <td align="center" valign="middle" style="height: 72px;">
+            <img src="https://img.icons8.com/ios-filled/50/dc2626/bill.png" width="36" height="36" style="display: block; border: 0;" alt="Invoice" />
+          </td>
+        </tr>
+      </table>
+      <h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">Pending Dues Alert</h2>
+    </div>
+    <div style="padding: 30px;">
+      <p style="color: #334155; font-size: 16px; line-height: 1.6; margin-top: 0; margin-bottom: 24px;">
+        Hello <strong>John Doe</strong>,<br><br>
+        Your clearance application has reached the <strong>FO (Accounts) Office</strong>. However, you have pending dues that must be cleared before final approval.
+      </p>
+      <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+        <h3 style="margin: 0 0 16px 0; color: #991b1b; font-size: 16px;">Dues Breakdown</h3>
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size: 14px; border-collapse: collapse;">
+          <thead>
+            <tr>
+              <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fca5a5; color: #7f1d1d; text-align: left;">Department</th>
+              <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fca5a5; color: #7f1d1d; text-align: left;">Reason</th>
+              <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fca5a5; color: #7f1d1d; text-align: right;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155;"><strong>Hostel</strong></td>
+              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Damaged Cot</td>
+              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #ef4444; font-weight: 600; text-align: right;">₹500</td>
+            </tr>
+            <tr>
+              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155;"><strong>Library</strong></td>
+              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Unreturned Book (Physics Vol. 1)</td>
+              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #ef4444; font-weight: 600; text-align: right;">₹250</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="2" style="padding: 16px 12px 0 12px; color: #334155; font-weight: bold; text-align: right; font-size: 16px;">Grand Total:</td>
+              <td style="padding: 16px 12px 0 12px; color: #ef4444; font-weight: bold; text-align: right; font-size: 18px;">₹750</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 16px; margin-bottom: 30px; border-radius: 0 8px 8px 0;">
+        <p style="margin: 0; color: #92400e; font-size: 15px; font-weight: 500;">
+          <strong>Action Required:</strong> Please pay the total fee and upload your payment receipt in the student portal to proceed with your clearance.
+        </p>
+      </div>
+      <div style="text-align: center;">
+        <a href="#" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">Pay & Upload Receipt</a>
+      </div>
+    </div>
+    <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+      <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+        RGUKT Clearance Hub<br>
+        This is an automated message, please do not reply.
+      </p>
+    </div>
+  </div>
+`;
+
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedRequest, setSelectedRequest] = useState<any>(null);
@@ -588,15 +653,20 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* More templates can be added here */}
-                  <div className="bg-surface rounded-2xl border border-surface-variant border-dashed p-6 flex flex-col items-center justify-center text-center opacity-70">
-                    <div className="w-16 h-16 bg-surface-variant rounded-full flex items-center justify-center mb-4">
-                      <Mail className="w-8 h-8 text-outline" />
-                    </div>
-                    <h4 className="font-headline-sm text-lg font-bold text-on-surface-variant mb-2">More Templates Coming Soon</h4>
-                    <p className="font-body-sm text-outline text-sm max-w-xs">
-                      Clearance Approved, Account Action Required, and Final Certificate email templates will be previewable here.
+                  {/* FO Pending Dues Template */}
+                  <div className="bg-surface rounded-2xl border border-surface-variant p-6 flex flex-col">
+                    <h4 className="font-headline-sm text-lg font-bold text-primary mb-2 flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-error" />
+                      Pending Dues Alert (FO)
+                    </h4>
+                    <p className="font-body-sm text-on-surface-variant mb-6 text-sm">
+                      Sent automatically when a student's clearance reaches the FO (Accounts) department and they have accumulated dues.
                     </p>
+                    <div className="flex-1 bg-surface-container-lowest rounded-xl border border-outline-variant/30 overflow-hidden shadow-inner p-4 flex items-center justify-center">
+                      <div className="w-full max-w-md scale-[0.8] origin-top h-[600px] overflow-y-auto no-scrollbar shadow-xl rounded-xl border border-surface-variant"
+                           dangerouslySetInnerHTML={{ __html: MOCK_FO_DUES_TEMPLATE }}>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
