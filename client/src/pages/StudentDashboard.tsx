@@ -36,6 +36,7 @@ export default function StudentDashboard() {
   const [showProgramModal, setShowProgramModal] = useState(false);
   const [selectedProgram, setSelectedProgram] = useState<'PUC' | 'B.Tech'>('PUC');
   const [selectedHostel, setSelectedHostel] = useState('');
+  const [isHostelDropdownOpen, setIsHostelDropdownOpen] = useState(false);
   const [showScholarshipModal, setShowScholarshipModal] = useState(false);
   const [scholarshipId, setScholarshipId] = useState('');
   const [pendingDepartments, setPendingDepartments] = useState<string[]>([]);
@@ -1090,21 +1091,40 @@ export default function StudentDashboard() {
                 />
               </div>
 
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-semibold text-primary mb-2">Present Hostel <span className="text-red-500">*</span></label>
-                <select 
-                  value={selectedHostel}
-                  onChange={(e) => setSelectedHostel(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-outline-variant bg-surface focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                  required
+                <button 
+                  type="button"
+                  onClick={() => setIsHostelDropdownOpen(!isHostelDropdownOpen)}
+                  className="w-full px-4 py-3 text-left rounded-xl border border-outline-variant bg-surface focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all flex justify-between items-center"
                 >
-                  <option value="" disabled>Select your hostel</option>
-                  <option value="Old campus">Old campus</option>
-                  <option value="BH1 front side">BH1 front side</option>
-                  <option value="BH1 Back side">BH1 Back side</option>
-                  <option value="BH2 Front side">BH2 Front side</option>
-                  <option value="BH2 Backside">BH2 Backside</option>
-                </select>
+                  <span className={selectedHostel ? "text-on-surface" : "text-on-surface-variant/70"}>
+                    {selectedHostel || "Select your hostel"}
+                  </span>
+                  <svg className={`w-5 h-5 text-on-surface-variant transition-transform duration-200 ${isHostelDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {isHostelDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-[310]" onClick={() => setIsHostelDropdownOpen(false)}></div>
+                    <div className="absolute z-[320] w-full mt-2 bg-surface border border-outline-variant rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200 max-h-60 overflow-y-auto">
+                      {["Old campus", "BH1 front side", "BH1 Back side", "BH2 Front side", "BH2 Backside"].map((hostel) => (
+                        <button
+                          key={hostel}
+                          type="button"
+                          onClick={() => {
+                            setSelectedHostel(hostel);
+                            setIsHostelDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-4 py-3 hover:bg-blue-50/50 transition-colors ${selectedHostel === hostel ? 'bg-blue-50/80 text-blue-700 font-semibold border-l-2 border-blue-500' : 'text-on-surface border-l-2 border-transparent'}`}
+                        >
+                          {hostel}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
             <div className="flex gap-4">
