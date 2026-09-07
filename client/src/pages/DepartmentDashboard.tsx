@@ -256,8 +256,33 @@ export default function DepartmentDashboard() {
         crUpdateData.totalFeeDue = increment(feeNum);
       }
 
-      if (departmentName === 'FO' && referenceId.trim() && newStatus === 'APPROVED') {
-        crUpdateData.paymentReferenceId = referenceId;
+      if (departmentName === 'FO' && newStatus === 'APPROVED') {
+        if (referenceId.trim()) crUpdateData.paymentReferenceId = referenceId;
+        crUpdateData.totalFeeDue = 0;
+        
+        // Update departmentClearances
+        const dcQuery = query(collection(db, 'departmentClearances'), where('requestId', '==', selectedClearance.requestId));
+        const dcSnap = await getDocs(dcQuery);
+        for (const dcDoc of dcSnap.docs) {
+          if (dcDoc.data().feeDue > 0) {
+            await updateDoc(doc(db, 'departmentClearances', dcDoc.id), { feeDue: 0, status_fee: 'PAID' });
+          }
+        }
+        
+        // Update maintenanceFees (Library, Sports, etc)
+        if (selectedClearance.student?.studentId) {
+          const feeDocRef = doc(db, 'maintenanceFees', selectedClearance.student.studentId);
+          await setDoc(feeDocRef, { pendingFee: 0 }, { merge: true });
+        }
+        
+        // Update hostelPenalties
+        if (selectedClearance.student?.studentId) {
+          const hpQuery = query(collection(db, 'hostelPenalties'), where('studentId', '==', selectedClearance.student.studentId), where('status', '==', 'PENDING'));
+          const hpSnap = await getDocs(hpQuery);
+          for (const hpDoc of hpSnap.docs) {
+            await updateDoc(doc(db, 'hostelPenalties', hpDoc.id), { status: 'PAID', updatedAt: new Date().toISOString() });
+          }
+        }
       }
       
       await updateDoc(crRef, crUpdateData);
@@ -293,7 +318,7 @@ export default function DepartmentDashboard() {
     setShowToast(false);
     try {
       if (departmentName === 'Hostel') {
-        const q = query(collection(db, 'hostelPenalties'), where('studentId', '==', selectedClearance.student.studentId));
+        const q = query(collection(db, 'hostelPenalties'), where('studentId', '==', selectedClearance.student.studentId), where('status', '==', 'PENDING'));
         const snap = await getDocs(q);
         const penalties = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const total = penalties.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);

@@ -217,7 +217,7 @@ export default function HostelPenaltyManager() {
                         </div>
                         <div className="text-right flex items-center gap-4">
                           <span className="font-headline-sm font-bold text-amber-700">₹{penalty.amount}</span>
-                          <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-wider rounded-full">
+                          <span className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full ${penalty.status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
                             {penalty.status}
                           </span>
                         </div>
