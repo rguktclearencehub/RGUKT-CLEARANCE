@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
 import { collection, getDocs, doc, updateDoc, query, where } from 'firebase/firestore';
-import { LogOut, Search, ShieldAlert, CheckCircle, Clock, AlertTriangle, RefreshCcw, UserCheck, ShieldCheck, LayoutDashboard, Settings, Book, Building, Dumbbell, Briefcase, FlaskConical, Microscope, Monitor, Award, UserCog, CheckSquare, X, CheckCircle2, AlertCircle, Lock, Mail } from 'lucide-react';
+import { LogOut, Search, ShieldAlert, CheckCircle, Clock, AlertTriangle, RefreshCcw, UserCheck, ShieldCheck, LayoutDashboard, Settings, Book, Building, Dumbbell, Briefcase, FlaskConical, Microscope, Monitor, Award, UserCog, CheckSquare, X, CheckCircle2, AlertCircle, Lock, Mail, FileText } from 'lucide-react';
 import Bubbles from '../components/Bubbles';
 import emailjs from '@emailjs/browser';
 
