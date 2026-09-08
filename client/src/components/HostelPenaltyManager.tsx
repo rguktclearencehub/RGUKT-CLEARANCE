@@ -3,7 +3,18 @@ import { collection, query, where, getDocs, setDoc, doc, updateDoc, addDoc, serv
 import { db } from '../firebase';
 import { Search, AlertCircle, PlusCircle, CheckCircle2, Trash2 } from 'lucide-react';
 
-export default function HostelPenaltyManager() {
+export default function HostelPenaltyManager({ type = 'hostel', departmentName = '' }: { type?: 'hostel' | 'dsw' | 'lab' | 'library' | 'itInfra', departmentName?: string }) {
+  const isDSW = type === 'dsw';
+  const isLab = type === 'lab';
+  const isLibrary = type === 'library';
+  const isITInfra = type === 'itInfra';
+  const collectionName = isDSW ? 'dswPenalties' : isLab ? 'labPenalties' : isLibrary ? 'libraryPenalties' : isITInfra ? 'itInfraPenalties' : 'hostelPenalties';
+  const managerTitle = isDSW ? 'DSW Penalty Manager' : isLab ? `${departmentName} Penalty Manager` : isLibrary ? 'Library Penalty Manager' : isITInfra ? 'IT Infra Penalty Manager' : 'Hostel Penalty Manager';
+  const managerSubtitle = isDSW ? 'Search for a student to view and add student welfare disciplinary or misconduct penalties.' : isLab ? `Search for a student to view and add ${departmentName} breakage or lost item charges.` : isLibrary ? 'Search for a student to view and add Library overdue book fines or lost book charges.' : isITInfra ? 'Search for a student to view and add IT equipment breakage, network device damage, or lost accessory charges.' : 'Search for a student to view and add damage or breakage charges.';
+  const reasonLabel = isDSW ? 'Reason (Disciplinary / Misconduct)' : isLab ? 'Reason (Breakage/Lost Item)' : isLibrary ? 'Reason (Overdue / Lost Book)' : isITInfra ? 'Reason (IT Damage / Lost Accessory)' : 'Reason (Damage/Breakage)';
+  const reasonPlaceholder = isDSW ? 'e.g. Disciplinary fine, misconduct' : isLab ? 'e.g. Broken beaker, lost equipment' : isLibrary ? 'e.g. Overdue book fine, lost library book' : isITInfra ? 'e.g. Damaged keyboard, broken LAN port, lost cable' : 'e.g. Broken window pane';
+  const addBtnText = isDSW ? 'Add DSW Penalty' : isLab ? 'Add Lab Penalty' : isLibrary ? 'Add Library Penalty' : isITInfra ? 'Add IT Infra Penalty' : 'Add Penalty';
+
   const [searchId, setSearchId] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [student, setStudent] = useState<any>(null);
@@ -15,6 +26,11 @@ export default function HostelPenaltyManager() {
   const [reason, setReason] = useState('');
   const [amount, setAmount] = useState('');
   const [isAdding, setIsAdding] = useState(false);
+
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteSuccess, setDeleteSuccess] = useState(false);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,7 +63,10 @@ export default function HostelPenaltyManager() {
   const fetchPenalties = async (sid: string) => {
     setIsFetchingPenalties(true);
     try {
-      const q = query(collection(db, 'hostelPenalties'), where('studentId', '==', sid));
+      let q = query(collection(db, collectionName), where('studentId', '==', sid));
+      if (isLab) {
+        q = query(collection(db, collectionName), where('studentId', '==', sid), where('department', '==', departmentName));
+      }
       const snap = await getDocs(q);
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       // sort by date descending manually if no index exists
@@ -75,9 +94,10 @@ export default function HostelPenaltyManager() {
         reason: reason.trim(),
         amount: parseInt(amount, 10),
         status: 'PENDING',
+        department: isDSW ? 'DSW' : isLab ? departmentName : isLibrary ? 'Library' : isITInfra ? 'IT Infra' : 'Hostel',
         createdAt: new Date().toISOString()
       };
-      await addDoc(collection(db, 'hostelPenalties'), newPenalty);
+      await addDoc(collection(db, collectionName), newPenalty);
       
       // Refresh list
       await fetchPenalties(student.studentId);
@@ -86,9 +106,46 @@ export default function HostelPenaltyManager() {
       
     } catch (err) {
       console.error(err);
-      alert('Failed to add penalty.');
+      alert(`Failed to add ${isDSW ? 'DSW penalty' : isLab ? 'lab penalty' : 'penalty'}.`);
     } finally {
       setIsAdding(false);
+    }
+  };
+
+  const initiateDelete = (penalty: any) => {
+    if (penalty.status === 'PAID') {
+      alert("Cannot delete a paid penalty.");
+      return;
+    }
+    setDeleteTarget(penalty);
+    setDeleteReason('');
+    setDeleteSuccess(false);
+  };
+
+  const confirmDeletePenalty = async () => {
+    if (!deleteReason || deleteReason.trim() === '' || !deleteTarget) {
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      const { deleteDoc, doc } = await import('firebase/firestore');
+      await deleteDoc(doc(db, collectionName, deleteTarget.id));
+      
+      setDeleteSuccess(true);
+      if (student?.studentId) {
+        await fetchPenalties(student.studentId);
+      }
+      
+      setTimeout(() => {
+        setDeleteTarget(null);
+        setIsDeleting(false);
+        setDeleteSuccess(false);
+      }, 1500);
+      
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete penalty.');
+      setIsDeleting(false);
     }
   };
 
@@ -102,8 +159,8 @@ export default function HostelPenaltyManager() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="bg-surface-container-lowest rounded-2xl p-8 border border-outline-variant/30 shadow-sm">
-        <h2 className="font-headline-md text-2xl font-bold text-primary mb-2">Hostel Penalty Manager</h2>
-        <p className="text-on-surface-variant font-body-md mb-6">Search for a student to view and add damage or breakage charges.</p>
+        <h2 className="font-headline-md text-2xl font-bold text-primary mb-2">{managerTitle}</h2>
+        <p className="text-on-surface-variant font-body-md mb-6">{managerSubtitle}</p>
         
         <form onSubmit={handleSearch} className="flex gap-4">
           <div className="flex-1 relative">
@@ -151,12 +208,12 @@ export default function HostelPenaltyManager() {
               <h4 className="font-label-lg font-bold text-on-surface mb-4">Add New Penalty</h4>
               <form onSubmit={handleAddPenalty} className="space-y-4">
                 <div>
-                  <label className="block font-label-sm text-on-surface-variant mb-1">Reason (Damage/Breakage)</label>
+                  <label className="block font-label-sm text-on-surface-variant mb-1">{reasonLabel}</label>
                   <input 
                     type="text" 
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
-                    placeholder="e.g. Broken window pane" 
+                    placeholder={reasonPlaceholder} 
                     className="w-full px-3 py-2 bg-surface border border-outline-variant/50 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
                     required
                   />
@@ -179,7 +236,7 @@ export default function HostelPenaltyManager() {
                   className="w-full bg-amber-600 hover:bg-amber-700 text-white py-2.5 rounded-lg font-label-md font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <PlusCircle className="w-5 h-5" />
-                  {isAdding ? 'Adding...' : 'Add Penalty'}
+                  {isAdding ? 'Adding...' : addBtnText}
                 </button>
               </form>
             </div>
@@ -220,6 +277,15 @@ export default function HostelPenaltyManager() {
                           <span className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full ${penalty.status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
                             {penalty.status}
                           </span>
+                          {penalty.status !== 'PAID' && (
+                            <button
+                              onClick={() => initiateDelete(penalty)}
+                              className="text-red-500 hover:text-red-700 p-1.5 rounded-full hover:bg-red-50 transition-colors ml-2"
+                              title="Delete Penalty"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -229,6 +295,71 @@ export default function HostelPenaltyManager() {
             </div>
           </div>
 
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-primary/40 backdrop-blur-sm flex items-center justify-center p-4 z-[110]">
+          <div className="bg-surface-container-lowest rounded-2xl p-6 max-w-md w-full shadow-2xl border border-surface-variant animate-in fade-in zoom-in-95 duration-200">
+            {deleteSuccess ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center animate-in fade-in zoom-in duration-300">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                  <CheckCircle2 className="w-8 h-8 text-green-600" />
+                </div>
+                <h3 className="font-headline-sm font-bold text-green-700 mb-2">Penalty Deleted!</h3>
+                <p className="text-on-surface-variant text-sm">The penalty was successfully removed.</p>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 mb-4 text-error">
+                  <div className="w-10 h-10 rounded-full bg-error-container flex items-center justify-center">
+                    <AlertCircle className="w-5 h-5 text-on-error-container" />
+                  </div>
+                  <h3 className="font-headline-sm font-bold">Delete Penalty</h3>
+                </div>
+                
+                <p className="font-body-md text-on-surface-variant mb-4">
+                  Are you sure you want to delete the penalty of <strong className="text-on-surface">₹{deleteTarget.amount}</strong> for <strong className="text-on-surface">{deleteTarget.reason}</strong>?
+                </p>
+                
+                <div className="mb-6">
+                  <label className="block font-label-sm font-bold text-on-surface-variant mb-2">
+                    Reason for Deletion <span className="text-error">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteReason}
+                    onChange={(e) => setDeleteReason(e.target.value)}
+                    placeholder="e.g. Added by mistake, duplicate entry"
+                    className="w-full px-4 py-3 bg-surface border border-outline-variant/50 rounded-xl focus:outline-none focus:border-error focus:ring-2 focus:ring-error/20"
+                    autoFocus
+                  />
+                </div>
+                
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setDeleteTarget(null)}
+                    disabled={isDeleting}
+                    className="flex-1 px-4 py-2.5 border border-outline-variant text-on-surface-variant rounded-xl font-label-md font-semibold hover:bg-surface-variant/50 transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={confirmDeletePenalty}
+                    disabled={!deleteReason.trim() || isDeleting}
+                    className="flex-1 px-4 py-2.5 bg-error text-on-error rounded-xl font-label-md font-semibold hover:bg-red-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:bg-error/70"
+                  >
+                    {isDeleting ? (
+                      <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Deleting...</>
+                    ) : (
+                      <>Delete Penalty</>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

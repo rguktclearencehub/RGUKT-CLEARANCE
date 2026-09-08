@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CheckSquare, User, FileText, Settings, LogOut, Search, Bell, HelpCircle, Book, Building, Dumbbell, Briefcase, AlertCircle, Clock, CheckCircle2, Send, ShieldCheck, FlaskConical, Microscope, Monitor, Award, UserCog, Lock } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, User, FileText, Settings, LogOut, Search, Bell, HelpCircle, Book, Building, Dumbbell, Briefcase, AlertCircle, Clock, CheckCircle2, Send, ShieldCheck, FlaskConical, Microscope, Monitor, Award, UserCog, Lock, ClipboardList, ChevronDown, Wrench } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, doc, getDoc, writeBatch, limit, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, writeBatch, limit, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import emailjs from '@emailjs/browser';
 import NoDueCertificate from '../components/NoDueCertificate';
 import FeeReceipt from '../components/FeeReceipt';
+import { generateDuesPdfBlob, uploadToGoogleDrive, getDriveDownloadLink, getDrivePreviewLink, downloadPdfDirectly, fetchDetailedStudentDues, type DepartmentDuesGroup } from '../utils/pdfGenerator';
 
 const EMAILJS_SERVICE_ID = 'service_yato66e';
 const EMAILJS_PUBLIC_KEY = 'uX0TI21Zg8bha0FM0';
@@ -13,16 +14,18 @@ const EMAILJS_PUBLIC_KEY = 'uX0TI21Zg8bha0FM0';
 const EMAILJS_SUBMISSION_TEMPLATE_ID = 'template_zdq3aos';
 
 const PUC_DEPARTMENTS = [
-  'Hostel', 'Sports', 'Physics Lab', 'Chemistry Lab', 'Biology Lab',
-  'COE', 'Library', 'IT Infra', 'Scholarship Office',
-  'FO', 'AO', 'Director', 'Dean of Academics'
+  'DSW', 'Sports', 'Physics Lab', 'Chemistry Lab', 'Biology Lab',
+  'COE', 'Library', 'IT Infra', 'Scholarship Office', 'FO', 'AO', 'Director', 'Dean of Academics'
 ];
 
 const BTECH_DEPARTMENTS = [
-  'Hostel', 'Sports', 'Physics Lab', 'Chemistry Lab', 'Biology Lab',
+  'DSW', 'Sports', 'Physics Lab', 'Chemistry Lab', 'Biology Lab', 'Engg Labs',
   'COE', 'HOD', 'Library', 'IT Infra', 'Scholarship Office',
   'FO', 'AO', 'Director', 'Dean of Academics'
 ];
+
+const PUC_HOSTELS = ["Old campus", "BH1 front side"];
+const BTECH_HOSTELS = ["BH1 Back side", "BH2 Front side", "BH2 Backside", "GH1", "GH2"];
 
 export default function StudentDashboard() {
   const [data, setData] = useState<any>(null);
@@ -35,21 +38,51 @@ export default function StudentDashboard() {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [showProgramModal, setShowProgramModal] = useState(false);
   const [selectedProgram, setSelectedProgram] = useState<'PUC' | 'B.Tech'>('PUC');
+  const [selectedGender, setSelectedGender] = useState<'Male' | 'Female' | null>(null);
+  const [selectedCourseType, setSelectedCourseType] = useState<'MPC' | 'MBIPC' | null>(null);
+  const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
+  const [isBranchDropdownOpen, setIsBranchDropdownOpen] = useState(false);
   const [selectedHostel, setSelectedHostel] = useState('');
   const [isHostelDropdownOpen, setIsHostelDropdownOpen] = useState(false);
   const [showScholarshipModal, setShowScholarshipModal] = useState(false);
+  const [showConfirmSubmit, setShowConfirmSubmit] = useState(false);
+  const [departmentsToSubmit, setDepartmentsToSubmit] = useState<string[]>([]);
+  const [countdown, setCountdown] = useState(4);
   const [scholarshipId, setScholarshipId] = useState('');
   const [pendingDepartments, setPendingDepartments] = useState<string[]>([]);
   const [showFeeBreakdown, setShowFeeBreakdown] = useState(false);
   const [showFeeReceipt, setShowFeeReceipt] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [detailedDuesGroups, setDetailedDuesGroups] = useState<DepartmentDuesGroup[]>([]);
+  const [isLoadingDetailedDues, setIsLoadingDetailedDues] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const branchDropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsHostelDropdownOpen(false);
+      }
+      if (branchDropdownRef.current && !branchDropdownRef.current.contains(event.target as Node)) {
+        setIsBranchDropdownOpen(false);
+      }
+    }
+
+    if (isHostelDropdownOpen || isBranchDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isHostelDropdownOpen, isBranchDropdownOpen]);
 
   const fetchDashboardData = async () => {
     const userStr = localStorage.getItem('user');
     if (!userStr) {
-      navigate('/login');
+      navigate('/login', { replace: true });
       return;
     }
     const user = JSON.parse(userStr);
@@ -63,6 +96,7 @@ export default function StudentDashboard() {
         const sData = studentSnap.data();
         if (sData.studentId) studentData.studentId = sData.studentId;
         if (sData.program) studentData.program = sData.program;
+        if (sData.scholarshipId) studentData.scholarshipId = sData.scholarshipId;
       }
       
       const crQuery = query(collection(db, 'clearanceRequests'), where('studentId', '==', user.id), limit(1));
@@ -70,11 +104,47 @@ export default function StudentDashboard() {
       
       if (!crSnap.empty) {
         const crDoc = crSnap.docs[0];
-        studentData.clearanceRequest = { id: crDoc.id, ...crDoc.data(), departmentClearances: [] };
+        const crData = crDoc.data();
+        studentData.clearanceRequest = { id: crDoc.id, ...crData, departmentClearances: [] };
+        if (crData.programType) {
+          studentData.program = crData.programType;
+          setSelectedProgram(crData.programType === 'B.Tech' ? 'B.Tech' : 'PUC');
+        }
         
         const dcQuery = query(collection(db, 'departmentClearances'), where('requestId', '==', crDoc.id));
         const dcSnap = await getDocs(dcQuery);
-        const deps = dcSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        let deps: any[] = dcSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // Auto-heal MPC sequence if Chemistry Lab was approved & forwarded, but COE is locked or Biology Lab was pending
+        const isMpc = crData.pucCourseType === 'MPC' || (crData.programType === 'PUC' && crData.courseType === 'MPC');
+        if (isMpc) {
+          const chemDept = deps.find((d: any) => d.departmentName === 'Chemistry Lab');
+          const bioDept = deps.find((d: any) => d.departmentName === 'Biology Lab');
+          const coeDept = deps.find((d: any) => d.departmentName === 'COE');
+          
+          if (chemDept && chemDept.status === 'APPROVED' && chemDept.forwarded && coeDept && coeDept.status === 'LOCKED') {
+            try {
+              await updateDoc(doc(db, 'departmentClearances', coeDept.id), {
+                status: 'PENDING',
+                updatedAt: new Date().toISOString()
+              });
+              coeDept.status = 'PENDING';
+              
+              if (bioDept) {
+                await deleteDoc(doc(db, 'departmentClearances', bioDept.id));
+                deps = deps.filter((d: any) => d.departmentName !== 'Biology Lab');
+              }
+            } catch (healErr) {
+              console.error('Auto-heal error:', healErr);
+            }
+          } else if (bioDept) {
+            try {
+              await deleteDoc(doc(db, 'departmentClearances', bioDept.id));
+              deps = deps.filter((d: any) => d.departmentName !== 'Biology Lab');
+            } catch (e) {}
+          }
+        }
+
         studentData.clearanceRequest.departmentClearances = deps;
 
         // Automatically show popup if there's a rejected department
@@ -87,12 +157,30 @@ export default function StudentDashboard() {
       setData(studentData);
     } catch(err) {
       console.error(err);
-      navigate('/login');
+      navigate('/login', { replace: true });
     }
   };
 
   useEffect(() => {
     fetchDashboardData();
+
+    // Prevent back navigation
+    window.history.pushState(null, '', window.location.href);
+    const handlePopState = () => {
+      setActiveTab(prev => {
+        if (prev !== 'dashboard') {
+          window.history.pushState(null, '', window.location.href);
+          return 'dashboard';
+        }
+        window.history.pushState(null, '', window.location.href);
+        return prev;
+      });
+    };
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, [navigate]);
 
   const handleSendRequest = (departments: string[], programType?: string) => {
@@ -149,7 +237,11 @@ export default function StudentDashboard() {
         const crRef = doc(collection(db, 'clearanceRequests'));
         batch.set(crRef, {
           studentId: user.id,
-          programType: programType || 'PUC',
+          programType: data?.clearanceRequest?.programType || programType || 'PUC',
+          courseType: data?.clearanceRequest?.courseType || '',
+          pucCourseType: data?.clearanceRequest?.pucCourseType || '',
+          presentHostel: data?.clearanceRequest?.presentHostel || '',
+          gender: data?.clearanceRequest?.gender || selectedGender || '',
           status: 'PENDING',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
@@ -160,13 +252,24 @@ export default function StudentDashboard() {
           batch.set(dcRef, {
             requestId: crRef.id,
             departmentName: d,
-            status: d === (programType === 'B.Tech' ? BTECH_DEPARTMENTS[0] : PUC_DEPARTMENTS[0]) ? 'PENDING' : 'LOCKED',
+            status: d === hostelDeptName ? 'PENDING' : 'LOCKED',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           });
         }
       } else {
         const crId = crSnap.docs[0].id;
+        const crRef = doc(db, 'clearanceRequests', crId);
+        const resolvedProg = data?.clearanceRequest?.programType || selectedProgram || programType || 'PUC';
+        batch.update(crRef, {
+          programType: resolvedProg,
+          courseType: data?.clearanceRequest?.courseType || (resolvedProg === 'PUC' ? selectedCourseType : selectedBranch) || '',
+          pucCourseType: data?.clearanceRequest?.pucCourseType || selectedCourseType || '',
+          presentHostel: data?.clearanceRequest?.presentHostel || selectedHostel || '',
+          gender: data?.clearanceRequest?.gender || selectedGender || '',
+          updatedAt: new Date().toISOString()
+        });
+
         const dcQuery = query(collection(db, 'departmentClearances'), where('requestId', '==', crId));
         const dcSnap = await getDocs(dcQuery);
         const existingDeps = dcSnap.docs.map(d => d.data().departmentName);
@@ -177,7 +280,7 @@ export default function StudentDashboard() {
           batch.set(dcRef, {
             requestId: crId,
             departmentName: d,
-            status: d === (crSnap.docs[0].data().programType === 'B.Tech' ? BTECH_DEPARTMENTS[0] : PUC_DEPARTMENTS[0]) ? 'PENDING' : 'LOCKED',
+            status: d === hostelDeptName ? 'PENDING' : 'LOCKED',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           });
@@ -273,10 +376,20 @@ export default function StudentDashboard() {
       setIsSubmitting(false);
       setSubmitSuccess(true);
       
-      setTimeout(() => {
-        setSubmitSuccess(false);
-        fetchDashboardData();
-      }, 2000);
+      let count = 4;
+      setCountdown(count);
+      
+      // Fetch in the background so it's ready when the countdown finishes
+      fetchDashboardData();
+      
+      const timer = setInterval(() => {
+        count -= 1;
+        setCountdown(count);
+        if (count <= 0) {
+          clearInterval(timer);
+          setSubmitSuccess(false);
+        }
+      }, 1000);
     } catch(err) {
       console.error(err);
       alert('Failed to submit requests. Please try again.');
@@ -394,9 +507,64 @@ export default function StudentDashboard() {
     }
   };
 
+  useEffect(() => {
+    if (showFeeBreakdown && data?.studentId) {
+      setIsLoadingDetailedDues(true);
+      fetchDetailedStudentDues(data.studentId, data.clearanceRequest)
+        .then(res => setDetailedDuesGroups(res.groups))
+        .catch(err => console.error('Failed to load detailed dues:', err))
+        .finally(() => setIsLoadingDetailedDues(false));
+    }
+  }, [showFeeBreakdown, data?.studentId, data?.clearanceRequest]);
+
+  const handleGeneratePdf = async () => {
+    setIsGeneratingPdf(true);
+    try {
+      const { groups: duesGroups, grandTotal } = await fetchDetailedStudentDues(
+        data.studentId,
+        data.clearanceRequest
+      );
+
+      const pdfBlob = await generateDuesPdfBlob(
+        '',
+        {
+          name: data.name,
+          studentId: data.studentId,
+          program: currentProgram,
+          department: data.clearanceRequest?.department || data.department,
+          hostel: data.clearanceRequest?.presentHostel || data.hostel
+        },
+        duesGroups,
+        grandTotal || data.clearanceRequest?.totalFeeDue || 0
+      );
+
+      // Direct instant download to student device
+      downloadPdfDirectly(pdfBlob, `${data.studentId}_Official_Dues_Report.pdf`);
+
+      // Attempt background save to Google Drive if authorized
+      try {
+        const fileId = await uploadToGoogleDrive(pdfBlob, `${data.studentId}_Official_Dues_Report.pdf`);
+        if (data.clearanceRequest?.id) {
+          const crRef = doc(db, 'clearanceRequests', data.clearanceRequest.id);
+          await updateDoc(crRef, { duesPdfFileId: fileId });
+          await fetchDashboardData();
+        }
+      } catch (driveErr) {
+        console.warn('Google Drive sync skipped/not authorized:', driveErr);
+      }
+
+      alert('Official PDF Dues Statement generated and downloaded successfully!');
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || 'Failed to generate PDF.');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
   const logout = () => {
     localStorage.removeItem('user');
-    navigate('/login');
+    navigate('/login', { replace: true });
   };
 
   if (!data) return (
@@ -405,10 +573,27 @@ export default function StudentDashboard() {
     </div>
   );
 
+  const getClearanceProgram = (cr: any, fallback: string): 'PUC' | 'B.Tech' => {
+    if (!cr) return fallback === 'B.Tech' || fallback === 'BTech' ? 'B.Tech' : 'PUC';
+    const raw = (cr.programType || cr.program || '').trim().toLowerCase();
+    if (raw === 'b.tech' || raw === 'btech') return 'B.Tech';
+    return 'PUC';
+  };
+
   const request = data.clearanceRequest;
-  const currentProgram = request?.programType || selectedProgram;
-  const currentDepartments = currentProgram === 'B.Tech' ? BTECH_DEPARTMENTS : PUC_DEPARTMENTS;
-  const deps = request ? request.departmentClearances : [];
+  const currentProgram = getClearanceProgram(request, selectedProgram);
+  const currentCourse = request?.courseType || selectedCourseType;
+  const currentPucCourseType = request?.pucCourseType || (currentProgram === 'PUC' ? currentCourse : selectedCourseType);
+  
+  const baseDepartments = currentProgram === 'B.Tech' ? BTECH_DEPARTMENTS : PUC_DEPARTMENTS;
+  
+  const currentGender = request?.gender || selectedGender;
+  const hostelDeptName = currentGender === 'Male' ? 'Boys Hostel' : 'Girls Hostel';
+  
+  const currentDepartments = [hostelDeptName, ...baseDepartments].filter(d => 
+    !(currentPucCourseType === 'MPC' && d === 'Biology Lab')
+  );
+  const deps = request?.departmentClearances || [];
   
   
   
@@ -423,9 +608,10 @@ export default function StudentDashboard() {
     if (n.includes('FO') || n.includes('ACCOUNT')) return <Briefcase className="w-6 h-6" />;
     if (n.includes('CHEMISTRY') || n.includes('PHYSICS')) return <FlaskConical className="w-6 h-6" />;
     if (n.includes('BIOLOGY')) return <Microscope className="w-6 h-6" />;
+    if (n.includes('ENGG LABS') || n.includes('ENG LAB')) return <Wrench className="w-6 h-6" />;
     if (n.includes('IT INFRA')) return <Monitor className="w-6 h-6" />;
     if (n.includes('SCHOLARSHIP')) return <Award className="w-6 h-6" />;
-    if (n.includes('DEAN') || n.includes('DIRECTOR') || n.includes('AO') || n.includes('COE') || n.includes('HOD')) return <UserCog className="w-6 h-6" />;
+    if (n.includes('DEAN') || n.includes('DIRECTOR') || n.includes('AO') || n.includes('COE') || n.includes('HOD') || n.includes('DSW')) return <UserCog className="w-6 h-6" />;
     return <CheckSquare className="w-6 h-6" />;
   };
 
@@ -433,7 +619,7 @@ export default function StudentDashboard() {
     <div className="flex min-h-screen text-on-background font-body-md antialiased">
       
       {/* SideNavBar Component */}
-      <aside className="bg-primary-container h-full w-64 fixed left-0 top-0 rounded-r-3xl border-r border-outline-variant/10 shadow-xl flex flex-col py-8 z-50">
+      <aside className="bg-primary-container h-full w-64 fixed left-0 top-0 rounded-r-3xl border-r border-outline-variant/10 shadow-xl flex flex-col py-8 z-50 transition-transform duration-300 hover:scale-[1.03] origin-left">
         <div className="px-6 mb-8 flex flex-col items-center">
           <div className="w-24 h-24 mb-4 flex items-center justify-center">
             <img src="/logo.png" alt="RGUKT Logo" className="w-full h-full object-contain" />
@@ -532,12 +718,20 @@ export default function StudentDashboard() {
           {request && (
             <div className="mb-12 bg-surface-container-lowest rounded-2xl p-8 shadow-sm border border-surface-variant animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="flex justify-between items-end mb-10">
-                <div>
+                <div className="flex flex-col">
                   <h3 className="font-headline-md text-xl font-bold text-primary mb-1">Clearance Flow</h3>
                   <p className="font-body-md text-on-surface-variant text-sm">
                     Track your clearance journey across all departments.
                   </p>
                 </div>
+                {request.programType && (
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-semibold text-on-surface-variant text-xs">Course:</span>
+                    <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-bold shadow-sm border border-blue-200">
+                      {request.programType} {request.courseType ? `(${request.courseType})` : ''}{request.programType === 'B.Tech' && request.pucCourseType ? ` - ${request.pucCourseType}` : ''}
+                    </span>
+                  </div>
+                )}
               </div>
               
               <div className="w-full pb-10 pt-2 flex justify-center">
@@ -545,8 +739,9 @@ export default function StudentDashboard() {
                   {currentDepartments.map((deptName: string, index: number) => {
                     const dept = deps.find((d: any) => d.departmentName === deptName);
                     const isApproved = dept?.status === 'APPROVED';
-                    const isSent = !!dept;
                     const isRejected = dept?.status === 'REJECTED';
+                    const isPending = dept?.status === 'PENDING';
+                    const isLocked = dept?.status === 'LOCKED' || !dept;
                     
                     return (
                       <div key={deptName} className={`flex items-center ${index < currentDepartments.length - 1 ? 'flex-1' : ''}`}>
@@ -555,7 +750,7 @@ export default function StudentDashboard() {
                           <div className={`w-10 h-10 lg:w-12 lg:h-12 rounded-full flex items-center justify-center z-10 transition-all duration-300 border-[3px] shadow-sm group-hover:scale-110 shrink-0 ${
                             isApproved ? 'bg-green-500 border-green-100 text-white' : 
                             isRejected ? 'bg-red-500 border-red-100 text-white' :
-                            isSent ? 'bg-amber-400 border-amber-100 text-white' :
+                            isPending ? 'bg-amber-500 border-amber-100 text-white ring-4 ring-amber-200/50 animate-pulse' :
                             'bg-surface border-surface-variant text-outline-variant'
                           }`}>
                             <div className="scale-75 lg:scale-90 flex items-center justify-center">
@@ -569,19 +764,21 @@ export default function StudentDashboard() {
                               <div className="bg-white rounded-full text-green-500 shadow-sm"><CheckCircle2 className="w-4 h-4" /></div>
                             ) : isRejected ? (
                               <div className="bg-white rounded-full text-red-500 shadow-sm"><AlertCircle className="w-4 h-4" /></div>
-                            ) : isSent ? (
+                            ) : isPending ? (
                               <div className="bg-white rounded-full text-amber-500 shadow-sm"><Clock className="w-4 h-4" /></div>
-                            ) : null}
+                            ) : (
+                              <div className="bg-white rounded-full text-outline-variant shadow-sm p-0.5"><Lock className="w-3 h-3" /></div>
+                            )}
                           </div>
                           
                           <div className="absolute top-12 lg:top-14 w-16 lg:w-20 text-center">
-                            <span className={`text-[8px] lg:text-[9px] font-bold uppercase tracking-wider leading-tight line-clamp-2 ${
-                              isApproved ? 'text-green-700' : 
-                              isRejected ? 'text-red-700' :
-                              isSent ? 'text-amber-700' : 
+                            <span className={`text-[8px] lg:text-[9px] font-bold tracking-wider leading-tight line-clamp-2 whitespace-pre-line ${
+                              isApproved ? 'text-green-700 font-bold' : 
+                              isRejected ? 'text-red-700 font-bold' :
+                              isPending ? 'text-amber-700 font-extrabold' : 
                               'text-outline'
                             }`}>
-                              {deptName}
+                              {deptName.replace(/ Lab$/gi, '\nLab')}
                             </span>
                           </div>
                         </div>
@@ -589,7 +786,7 @@ export default function StudentDashboard() {
                         {/* Connecting Line */}
                         {index < currentDepartments.length - 1 && (
                           <div className={`flex-1 h-1 mx-1 lg:mx-2 rounded-full transition-colors duration-500 ${
-                            isApproved ? 'bg-green-400' : 'bg-surface-variant'
+                            isApproved ? 'bg-green-500' : 'bg-surface-variant'
                           }`}></div>
                         )}
                       </div>
@@ -603,9 +800,12 @@ export default function StudentDashboard() {
           {/* Grid Content */}
           {(request || isInitiating) && (
             <div className="animate-in fade-in duration-500">
+              <div className="flex items-center justify-between mb-6 border-b border-surface-variant pb-4">
+                <h3 className="font-headline-md text-2xl font-bold text-primary">Department Status</h3>
+              </div>
+
               <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-4">
-                  <h3 className="font-headline-md text-2xl font-bold text-primary">Department Status</h3>
+                <div className="flex flex-col gap-4">
                   {request && request.totalFeeDue > 0 && (
                     request.paymentReferenceId ? (
                       <button 
@@ -714,6 +914,23 @@ export default function StudentDashboard() {
                       </div>
                       
                       <h4 className="font-headline-sm text-base font-bold text-primary mb-1.5">{deptName}</h4>
+                      
+                      {(deptName === 'Boys Hostel' || deptName === 'Girls Hostel') && request?.presentHostel && (
+                        <div className="mb-2">
+                          <span className="inline-block bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-bold border border-blue-200 shadow-sm">
+                            {request.presentHostel}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {deptName === 'Scholarship Office' && data?.scholarshipId && (
+                        <div className="mb-2">
+                          <span className="inline-block bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-bold border border-blue-200 shadow-sm font-mono">
+                            ID: {data.scholarshipId}
+                          </span>
+                        </div>
+                      )}
+
                       <p className="font-body-sm text-[13px] leading-relaxed text-on-surface-variant mb-4 flex-1">
                         {dept?.remarks || (dept ? (dept.status === 'LOCKED' ? `Waiting for previous departments to approve.` : `Awaiting confirmation from ${deptName.toLowerCase()} manager.`) : `Ready to initiate clearance.`)}
                       </p>
@@ -761,7 +978,8 @@ export default function StudentDashboard() {
                   <button 
                     onClick={() => {
                       const unsent = currentDepartments.filter(d => !deps.find((rd: any) => rd.departmentName === d));
-                      handleSendRequest(unsent);
+                      setDepartmentsToSubmit(unsent);
+                      setShowConfirmSubmit(true);
                     }}
                     className="px-6 py-3 bg-blue-600 text-white rounded-xl font-label-md text-sm font-bold shadow hover:bg-blue-700 transition-colors flex items-center gap-2"
                   >
@@ -910,14 +1128,17 @@ export default function StudentDashboard() {
       {/* Department Details Modal */}
       {selectedDept && (
         <div className="fixed inset-0 bg-primary/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-          <div className="bg-surface-container-lowest rounded-2xl p-8 max-w-sm w-full shadow-2xl border border-surface-variant animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-start mb-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant">
+          <div className={`bg-surface-container-lowest rounded-2xl p-5 sm:p-6 w-full max-h-[85vh] flex flex-col shadow-2xl border border-surface-variant animate-in fade-in zoom-in-95 duration-200 ${
+            (selectedDept.departmentName === 'COE' && selectedDept.academicRecord) || (selectedDept.departmentName === 'Scholarship Office' && selectedDept.scholarshipDetails) ? 'max-w-lg' : 'max-w-sm'
+          }`}>
+            {/* Header */}
+            <div className="flex justify-between items-start mb-4 shrink-0 pb-3 border-b border-surface-variant/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant shrink-0">
                   {getIcon(selectedDept.departmentName)}
                 </div>
                 <div>
-                  <h3 className="font-headline-md text-xl font-bold text-primary">{selectedDept.departmentName}</h3>
+                  <h3 className="font-headline-md text-lg font-bold text-primary">{selectedDept.departmentName}</h3>
                   <span className="font-label-sm text-xs text-outline font-medium">Ref: {selectedDept.id.substring(0,6)}</span>
                 </div>
               </div>
@@ -929,86 +1150,251 @@ export default function StudentDashboard() {
               </button>
             </div>
             
-            <div className="space-y-4 mb-6">
-              <div className="flex justify-between items-center py-3 border-b border-surface-variant">
-                <span className="text-on-surface-variant font-label-md">Status</span>
-                {selectedDept.status === 'APPROVED' && (
-                  <span className="px-3 py-1 rounded-full bg-green-100 text-green-800 font-label-sm text-sm font-semibold flex items-center gap-1">
-                    <CheckCircle2 className="w-4 h-4" /> Approved
-                  </span>
-                )}
-                {selectedDept.status === 'REJECTED' && (
-                  <span className="px-3 py-1 rounded-full bg-error-container text-on-error-container font-label-sm text-sm font-semibold flex items-center gap-1">
-                    <AlertCircle className="w-4 h-4" /> Rejected
-                  </span>
-                )}
-                {selectedDept.status === 'PENDING' && (
-                  <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-800 font-label-sm text-sm font-semibold flex items-center gap-1">
-                    <Clock className="w-4 h-4" /> Pending
-                  </span>
-                )}
+            {/* Scrollable Body */}
+            <div className="flex-1 overflow-y-auto pr-1 space-y-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              <div className="flex justify-between items-center py-2 border-b border-surface-variant/50">
+                <span className="text-on-surface-variant font-label-md text-xs font-semibold">Status</span>
+                <div className="flex flex-col items-end">
+                  <div className="flex items-center gap-2">
+                    {selectedDept.status === 'APPROVED' && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-green-100 text-green-800 font-label-sm text-xs font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Approved
+                      </span>
+                    )}
+                    {selectedDept.status === 'REJECTED' && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-error-container text-on-error-container font-label-sm text-xs font-semibold flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" /> Rejected
+                      </span>
+                    )}
+                    {selectedDept.status === 'PENDING' && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-label-sm text-xs font-semibold flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5" /> Pending
+                      </span>
+                    )}
+                  </div>
+                  {selectedDept.handledBy && (selectedDept.status === 'APPROVED' || selectedDept.status === 'REJECTED') && (
+                    <span className="text-[11px] text-on-surface-variant mt-1 font-medium">
+                      By: {selectedDept.handledBy}
+                    </span>
+                  )}
+                </div>
               </div>
               
-              <div className="py-3">
-                <span className="block text-on-surface-variant font-label-md mb-2">Remarks / Notes</span>
-                <p className="font-body-md text-primary bg-surface-variant/20 p-4 rounded-xl border border-surface-variant/50">
+              {selectedDept.departmentName === 'COE' && (
+                <div className="py-2 border-b border-surface-variant/50">
+                  <span className="block text-on-surface-variant font-label-md mb-2 font-bold text-xs uppercase tracking-wider">
+                    Academic Status Records
+                  </span>
+                  {selectedDept.academicRecord && Object.keys(selectedDept.academicRecord).length > 0 ? (
+                    <div className="space-y-2.5">
+                      {(() => {
+                        const isStudentBTech = currentProgram === 'B.Tech';
+                        const PUC_SEMS = ['PUC-1 Sem 1', 'PUC-1 Sem 2', 'PUC-2 Sem 1', 'PUC-2 Sem 2'];
+                        const BTECH_SEMS = [
+                          'PUC-1 Sem 1', 'PUC-1 Sem 2',
+                          'PUC-2 Sem 1', 'PUC-2 Sem 2',
+                          'B.Tech E1 Sem 1', 'B.Tech E1 Sem 2',
+                          'B.Tech E2 Sem 1', 'B.Tech E2 Sem 2',
+                          'B.Tech E3 Sem 1', 'B.Tech E3 Sem 2',
+                          'B.Tech E4 Sem 1', 'B.Tech E4 Sem 2'
+                        ];
+                        const targetOrder = isStudentBTech ? BTECH_SEMS : PUC_SEMS;
+                        
+                        // Filter records to only relevant semesters based on student's selected program
+                        const rawRecords = (selectedDept.academicRecord as Record<string, 'PASS' | 'REMEDIAL'>) || {};
+                        const entriesToShow = targetOrder
+                          .filter(sem => rawRecords[sem] !== undefined)
+                          .map(sem => [sem, rawRecords[sem]] as [string, 'PASS' | 'REMEDIAL']);
+
+                        const hasPendingRemedial = entriesToShow.some(([_, status]) => status === 'REMEDIAL');
+
+                        return (
+                          <>
+                            <div className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold ${
+                              hasPendingRemedial
+                                ? 'bg-red-50 text-red-800 border-red-200'
+                                : 'bg-green-50 text-green-800 border-green-200'
+                            }`}>
+                              <div className="flex items-center gap-2">
+                                {hasPendingRemedial ? (
+                                  <>
+                                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                                    <span>Academic Status: Remedial Pending</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                                    <span>Academic Status: All Passed</span>
+                                  </>
+                                )}
+                              </div>
+                              <span className="text-[10px] uppercase font-extrabold px-2 py-0.5 rounded bg-white/80 border border-current shadow-xs">
+                                {isStudentBTech ? 'B.Tech (12 Sems)' : 'PUC (4 Sems)'}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                              {entriesToShow.map(([sem, status]) => (
+                                <div 
+                                  key={sem} 
+                                  className={`p-2 rounded-lg border flex items-center justify-between text-xs font-bold transition-all ${
+                                    status === 'REMEDIAL' ? 'bg-red-50/80 border-red-200 text-red-900' : 'bg-green-50/60 border-green-200 text-green-900'
+                                  }`}
+                                >
+                                  <span className="truncate mr-2 text-[11px]">{sem}</span>
+                                  {status === 'REMEDIAL' ? (
+                                    <span className="px-2 py-0.5 rounded bg-red-600 text-white text-[10px] font-bold shrink-0 flex items-center gap-1">
+                                      <AlertCircle className="w-3 h-3" /> Remedial
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded bg-green-600 text-white text-[10px] font-bold shrink-0 flex items-center gap-1">
+                                      <CheckCircle2 className="w-3 h-3" /> Passed
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-surface-variant/20 rounded-xl text-xs text-on-surface-variant border border-surface-variant/50">
+                      Academic status check not yet processed by COE.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selectedDept.departmentName === 'Scholarship Office' && (
+                <div className="py-2 border-b border-surface-variant/50">
+                  <span className="block text-on-surface-variant font-label-md mb-2 font-bold text-xs uppercase tracking-wider">
+                    Scholarship & Dues Breakdown
+                  </span>
+                  {selectedDept.scholarshipDetails?.years && selectedDept.scholarshipDetails.years.length > 0 ? (
+                    <div className="space-y-2.5">
+                      <div className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold ${
+                        (selectedDept.scholarshipDetails.totalDue || 0) > 0
+                          ? 'bg-amber-50 border-amber-300 text-amber-900'
+                          : 'bg-green-50 border-green-300 text-green-900'
+                      }`}>
+                        <span>
+                          {(selectedDept.scholarshipDetails.totalDue || 0) > 0
+                            ? `Total Due: ₹${Number(selectedDept.scholarshipDetails.totalDue).toLocaleString()}`
+                            : 'Nil Dues (Full Credited)'}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wider ${
+                          (selectedDept.scholarshipDetails.totalDue || 0) > 0 ? 'bg-red-200 text-red-800' : 'bg-green-200 text-green-800'
+                        }`}>
+                          {(selectedDept.scholarshipDetails.totalDue || 0) > 0 ? 'Due Pending' : 'Cleared'}
+                        </span>
+                      </div>
+
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                        {(() => {
+                          const isStudentBTech = currentProgram === 'B.Tech';
+                          const filteredYears = (selectedDept.scholarshipDetails.years as any[]).filter(yr => {
+                            if (!isStudentBTech) {
+                              return yr.category === 'PUC' || yr.id === 'puc1' || yr.id === 'puc2' || yr.name?.toLowerCase().includes('puc');
+                            }
+                            return true;
+                          });
+
+                          return filteredYears.map((yr: any) => (
+                            <div key={yr.id} className="p-2 rounded-lg bg-surface-variant/20 border border-surface-variant/40 flex items-center justify-between text-xs">
+                              <div>
+                                <span className="font-bold text-primary block">{yr.name}</span>
+                                <span className="text-[11px] text-on-surface-variant">
+                                  Grant: ₹{Number(yr.totalGrant).toLocaleString()} | Credited: ₹{Number(yr.credited).toLocaleString()}
+                                </span>
+                              </div>
+                              <div>
+                                {(Number(yr.due) || 0) > 0 ? (
+                                  <span className="font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded text-xs">
+                                    Due: ₹{Number(yr.due).toLocaleString()}
+                                  </span>
+                                ) : (
+                                  <span className="font-bold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded text-xs">
+                                    ₹0 Due
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-surface-variant/20 rounded-xl text-xs text-on-surface-variant border border-surface-variant/50">
+                      Scholarship details not yet processed by Scholarship Office.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="py-2">
+                <span className="block text-on-surface-variant font-label-md text-xs font-semibold mb-1.5">Remarks / Notes</span>
+                <p className="font-body-sm text-primary text-xs bg-surface-variant/20 p-3 rounded-xl border border-surface-variant/50 leading-relaxed">
                   {selectedDept.remarks || "No remarks provided by the department yet."}
                 </p>
               </div>
             </div>
 
-            {selectedDept.status === 'PENDING' ? (
-              <div className="flex gap-4">
-                <button 
-                  onClick={() => setConfirmCancelDept(selectedDept.departmentName)} 
-                  className="flex-1 bg-red-50 text-red-600 border border-red-200 py-3 rounded-xl font-label-md font-semibold hover:bg-red-100 transition-colors shadow-sm"
-                >
-                  Cancel Request
-                </button>
+            {/* Footer */}
+            <div className="pt-4 mt-2 border-t border-surface-variant/50 shrink-0">
+              {selectedDept.status === 'PENDING' ? (
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setConfirmCancelDept(selectedDept.departmentName)} 
+                    className="flex-1 bg-red-50 text-red-600 border border-red-200 py-2.5 rounded-xl font-label-md text-xs font-semibold hover:bg-red-100 transition-colors shadow-sm"
+                  >
+                    Cancel Request
+                  </button>
+                  <button 
+                    onClick={() => setSelectedDept(null)} 
+                    className="flex-1 bg-primary-container text-on-primary py-2.5 rounded-xl font-label-md text-xs font-semibold hover:scale-[1.02] transition-transform duration-300 shadow-md"
+                  >
+                    Close
+                  </button>
+                </div>
+              ) : selectedDept.status === 'REJECTED' ? (
+                <div className="flex gap-3">
+                  <button 
+                    onClick={async () => {
+                      try {
+                        setIsSubmitting(true);
+                        const { updateDoc } = await import('firebase/firestore');
+                        const dcRef = doc(db, 'departmentClearances', selectedDept.id);
+                        await updateDoc(dcRef, { status: 'PENDING' });
+                        await fetchDashboardData();
+                        setSelectedDept(null);
+                      } catch (err) {
+                        console.error(err);
+                        alert('Failed to request again');
+                      } finally {
+                        setIsSubmitting(false);
+                      }
+                    }}
+                    className="flex-1 bg-blue-600 text-white py-2.5 rounded-xl font-label-md text-xs font-semibold hover:bg-blue-700 transition-colors shadow-md"
+                  >
+                    Request Again
+                  </button>
+                  <button 
+                    onClick={() => setSelectedDept(null)} 
+                    className="flex-1 bg-surface-variant text-on-surface-variant py-2.5 rounded-xl font-label-md text-xs font-semibold hover:bg-outline-variant/30 transition-colors shadow-sm"
+                  >
+                    Close
+                  </button>
+                </div>
+              ) : (
                 <button 
                   onClick={() => setSelectedDept(null)} 
-                  className="flex-1 bg-primary-container text-on-primary py-3 rounded-xl font-label-md font-semibold hover:scale-[1.02] transition-transform duration-300 shadow-md"
+                  className="w-full bg-primary-container text-on-primary py-2.5 rounded-xl font-label-md text-xs font-semibold hover:scale-[1.02] transition-transform duration-300 shadow-md"
                 >
                   Close
                 </button>
-              </div>
-            ) : selectedDept.status === 'REJECTED' ? (
-              <div className="flex gap-4">
-                <button 
-                  onClick={async () => {
-                    try {
-                      setIsSubmitting(true);
-                      const { updateDoc } = await import('firebase/firestore');
-                      const dcRef = doc(db, 'departmentClearances', selectedDept.id);
-                      await updateDoc(dcRef, { status: 'PENDING' });
-                      await fetchDashboardData();
-                      setSelectedDept(null);
-                    } catch (err) {
-                      console.error(err);
-                      alert('Failed to request again');
-                    } finally {
-                      setIsSubmitting(false);
-                    }
-                  }}
-                  className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-label-md font-semibold hover:bg-blue-700 transition-colors shadow-md"
-                >
-                  Request Again
-                </button>
-                <button 
-                  onClick={() => setSelectedDept(null)} 
-                  className="flex-1 bg-surface-variant text-on-surface-variant py-3 rounded-xl font-label-md font-semibold hover:bg-outline-variant/30 transition-colors shadow-sm"
-                >
-                  Close
-                </button>
-              </div>
-            ) : (
-              <button 
-                onClick={() => setSelectedDept(null)} 
-                className="w-full bg-primary-container text-on-primary py-3 rounded-xl font-label-md font-semibold hover:scale-[1.02] transition-transform duration-300 shadow-md"
-              >
-                Close
-              </button>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1057,26 +1443,179 @@ export default function StudentDashboard() {
       {/* Program Selection Modal */}
       {showProgramModal && (
         <div className="fixed inset-0 bg-primary/40 backdrop-blur-sm flex items-center justify-center p-4 z-[300]">
-          <div className="bg-surface-container-lowest rounded-2xl p-8 max-w-sm w-full shadow-2xl border border-surface-variant animate-in fade-in zoom-in-95 duration-200">
-            <h3 className="font-headline-md text-xl font-bold text-primary text-center mb-2">Initiate Clearance</h3>
-            <p className="font-body-md text-on-surface-variant text-center mb-6">
-              Please confirm your details to generate the correct clearance flow.
-            </p>
-            <div className="space-y-4 mb-6">
+          <div className="bg-surface-container-lowest rounded-2xl p-6 md:p-8 max-w-xl w-full max-h-[95vh] overflow-y-auto no-scrollbar shadow-2xl border border-surface-variant animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center border border-blue-100 shadow-inner shrink-0">
+                <ClipboardList className="w-6 h-6 text-blue-600" />
+              </div>
               <div>
-                <label className="block text-sm font-semibold text-primary mb-2">Program <span className="text-red-500">*</span></label>
-                <div className="flex gap-2">
-                  <label className="flex-1 flex items-center justify-center gap-2 p-3 border border-outline-variant rounded-xl cursor-pointer hover:bg-surface-variant/20 transition-colors bg-surface">
-                    <input type="radio" name="program" value="PUC" checked={selectedProgram === 'PUC'} onChange={() => setSelectedProgram('PUC')} className="w-4 h-4 text-blue-600" />
+                <h3 className="font-headline-md text-xl font-bold text-primary mb-1">Initiate Clearance</h3>
+                <p className="font-body-sm text-on-surface-variant leading-relaxed">
+                  Please confirm your details to generate the correct clearance flow.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-4 mb-6">
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="block text-sm font-semibold text-primary mb-2">Student ID</label>
+                  <input 
+                    type="text" 
+                    readOnly
+                    value={data?.studentId || data?.id || ''}
+                    className="w-full px-4 py-2.5 rounded-xl border border-outline-variant bg-surface-variant/30 text-on-surface-variant outline-none cursor-not-allowed"
+                  />
+                </div>
+                <div className="flex-[2]">
+                  <label className="block text-sm font-semibold text-primary mb-2">Full Name</label>
+                  <input 
+                    type="text" 
+                    readOnly
+                    value={(data?.name || data?.email?.split('@')[0])?.replace(new RegExp(`^${data?.studentId || data?.id}\\s*`, 'i'), '').trim()}
+                    className="w-full px-4 py-2.5 rounded-xl border border-outline-variant bg-surface-variant/30 text-on-surface-variant outline-none cursor-not-allowed"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-primary mb-2">Course <span className="text-red-500">*</span></label>
+                <div className="flex gap-8 sm:gap-12 px-4 sm:px-12">
+                  <label className="flex-1 flex items-center justify-center gap-2 p-2.5 border border-outline-variant rounded-xl cursor-pointer hover:bg-surface-variant/20 transition-colors bg-surface">
+                    <input type="radio" name="program" value="PUC" checked={selectedProgram === 'PUC'} onChange={() => { 
+                      setSelectedProgram('PUC'); 
+                      if (selectedGender === 'Male') setSelectedHostel('BH1 frontside');
+                      if (selectedGender === 'Female') setSelectedHostel('Old campus');
+                    }} className="w-4 h-4 text-blue-600" />
                     <span className="font-label-md font-bold text-primary">PUC</span>
                   </label>
-                  <label className="flex-1 flex items-center justify-center gap-2 p-3 border border-outline-variant rounded-xl cursor-pointer hover:bg-surface-variant/20 transition-colors bg-surface">
-                    <input type="radio" name="program" value="B.Tech" checked={selectedProgram === 'B.Tech'} onChange={() => setSelectedProgram('B.Tech')} className="w-4 h-4 text-blue-600" />
+                  <label className="flex-1 flex items-center justify-center gap-2 p-2.5 border border-outline-variant rounded-xl cursor-pointer hover:bg-surface-variant/20 transition-colors bg-surface">
+                    <input type="radio" name="program" value="B.Tech" checked={selectedProgram === 'B.Tech'} onChange={() => { 
+                      setSelectedProgram('B.Tech'); 
+                      if (selectedGender === 'Male') setSelectedHostel('BH1 backside');
+                      if (selectedGender === 'Female') setSelectedHostel('GH1');
+                    }} className="w-4 h-4 text-blue-600" />
                     <span className="font-label-md font-bold text-primary">B.Tech</span>
                   </label>
                 </div>
               </div>
-              
+
+              <div>
+                <label className="block text-sm font-semibold text-primary mb-2">PUC Course Type <span className="text-red-500">*</span></label>
+                <div className="flex gap-8 sm:gap-12 px-4 sm:px-12">
+                  <label className="flex-1 flex items-center justify-center gap-2 p-2.5 border border-outline-variant rounded-xl cursor-pointer hover:bg-surface-variant/20 transition-colors bg-surface">
+                    <input type="radio" name="courseType" value="MPC" checked={selectedCourseType === 'MPC'} onChange={() => setSelectedCourseType('MPC')} className="w-4 h-4 text-blue-600" />
+                    <span className="font-label-md font-bold text-primary">MPC</span>
+                  </label>
+                  <label className="flex-1 flex items-center justify-center gap-2 p-2.5 border border-outline-variant rounded-xl cursor-pointer hover:bg-surface-variant/20 transition-colors bg-surface">
+                    <input type="radio" name="courseType" value="MBIPC" checked={selectedCourseType === 'MBIPC'} onChange={() => setSelectedCourseType('MBIPC')} className="w-4 h-4 text-blue-600" />
+                    <span className="font-label-md font-bold text-primary">MBIPC</span>
+                  </label>
+                </div>
+              </div>
+
+              {selectedProgram === 'B.Tech' && (
+                <div className="relative z-[320]">
+                  <label className="block text-sm font-semibold text-primary mb-2">B.Tech Branch <span className="text-red-500">*</span></label>
+                  <div className="relative" ref={branchDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsBranchDropdownOpen(!isBranchDropdownOpen)}
+                      className="w-full px-4 py-2.5 rounded-xl border border-outline-variant bg-surface focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all flex items-center justify-between text-left"
+                    >
+                      <span className={selectedBranch ? 'text-on-surface' : 'text-on-surface-variant'}>
+                        {selectedBranch || 'Select Branch'}
+                      </span>
+                      <ChevronDown className={`w-5 h-5 text-on-surface-variant transition-transform ${isBranchDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {isBranchDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-2 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-lg overflow-hidden animate-in fade-in zoom-in-95 duration-100 max-h-48 overflow-y-auto no-scrollbar">
+                        {['AIML', 'CSE', 'ECE', 'EEE', 'CIVIL', 'CHE', 'ME', 'MME'].map(branch => (
+                          <button
+                            key={branch}
+                            type="button"
+                            onClick={() => {
+                              setSelectedBranch(branch);
+                              setIsBranchDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-4 py-3 hover:bg-surface-variant/50 transition-colors ${selectedBranch === branch ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-on-surface'}`}
+                          >
+                            {branch}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-semibold text-primary mb-2">Gender <span className="text-red-500">*</span></label>
+                <div className="flex gap-8 sm:gap-12 px-4 sm:px-12">
+                  <label className="flex-1 flex items-center justify-center gap-2 p-2.5 border border-outline-variant rounded-xl cursor-pointer hover:bg-surface-variant/20 transition-colors bg-surface">
+                    <input type="radio" name="gender" value="Male" checked={selectedGender === 'Male'} onChange={() => { 
+                      setSelectedGender('Male'); 
+                      setSelectedHostel(selectedProgram === 'PUC' ? 'BH1 frontside' : 'BH1 backside'); 
+                    }} className="w-4 h-4 text-blue-600" />
+                    <span className="font-label-md font-bold text-primary">Male</span>
+                  </label>
+                  <label className="flex-1 flex items-center justify-center gap-2 p-2.5 border border-outline-variant rounded-xl cursor-pointer hover:bg-surface-variant/20 transition-colors bg-surface">
+                    <input type="radio" name="gender" value="Female" checked={selectedGender === 'Female'} onChange={() => { 
+                      setSelectedGender('Female'); 
+                      setSelectedHostel(selectedProgram === 'PUC' ? 'Old campus' : 'GH1'); 
+                    }} className="w-4 h-4 text-blue-600" />
+                    <span className="font-label-md font-bold text-primary">Female</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="relative z-[310]">
+                <label className="block text-sm font-semibold text-primary mb-2">Present Hostel</label>
+                {selectedGender ? (
+                  <div className="relative" ref={dropdownRef}>
+                    <button
+                      type="button"
+                      disabled={selectedProgram === 'PUC'}
+                      onClick={() => setIsHostelDropdownOpen(!isHostelDropdownOpen)}
+                      className={`w-full px-4 py-2.5 rounded-xl border border-outline-variant bg-surface focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all flex items-center justify-between text-left ${selectedProgram === 'PUC' ? 'opacity-80 cursor-not-allowed' : ''}`}
+                    >
+                      <span className={selectedHostel ? 'text-on-surface' : 'text-on-surface-variant'}>
+                        {selectedHostel || 'Select hostel'}
+                      </span>
+                      <ChevronDown className={`w-5 h-5 text-on-surface-variant transition-transform ${isHostelDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {isHostelDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-2 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-lg overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                          {(selectedProgram === 'PUC' 
+                            ? (selectedGender === 'Male' ? ['BH1 front side'] : ['Old campus'])
+                            : (selectedGender === 'Male' ? ['BH1 Back side', 'BH2 Front side', 'BH2 Backside'] : ['GH1', 'GH2'])
+                          ).map(hostel => (
+                            <button
+                              key={hostel}
+                              type="button"
+                              onClick={() => {
+                                setSelectedHostel(hostel);
+                                setIsHostelDropdownOpen(false);
+                              }}
+                              className={`w-full text-left px-4 py-3 hover:bg-surface-variant/50 transition-colors ${selectedHostel === hostel ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-on-surface'}`}
+                            >
+                              {hostel}
+                            </button>
+                          ))}
+                        </div>
+                    )}
+                  </div>
+                ) : (
+                  <input 
+                    type="text" 
+                    readOnly
+                    value="Select gender first"
+                    className="w-full px-4 py-2.5 rounded-xl border border-outline-variant bg-surface-variant/30 text-on-surface-variant outline-none cursor-not-allowed"
+                  />
+                )}
+              </div>
+
               <div>
                 <label className="block text-sm font-semibold text-primary mb-2">Scholarship ID <span className="text-red-500">*</span></label>
                 <input 
@@ -1085,81 +1624,93 @@ export default function StudentDashboard() {
                   minLength={12}
                   maxLength={12}
                   placeholder="e.g. SCH202412345"
-                  className="w-full px-4 py-3 rounded-xl border border-outline-variant bg-surface focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                  className="w-full px-4 py-2.5 rounded-xl border border-outline-variant bg-surface focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
                   value={scholarshipId}
                   onChange={(e) => setScholarshipId(e.target.value)}
                 />
-              </div>
-
-              <div className="relative">
-                <label className="block text-sm font-semibold text-primary mb-2">Present Hostel <span className="text-red-500">*</span></label>
-                <button 
-                  type="button"
-                  onClick={() => setIsHostelDropdownOpen(!isHostelDropdownOpen)}
-                  className="w-full px-4 py-3 text-left rounded-xl border border-outline-variant bg-surface focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all flex justify-between items-center"
-                >
-                  <span className={selectedHostel ? "text-on-surface" : "text-on-surface-variant/70"}>
-                    {selectedHostel || "Select your hostel"}
-                  </span>
-                  <svg className={`w-5 h-5 text-on-surface-variant transition-transform duration-200 ${isHostelDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                {isHostelDropdownOpen && (
-                  <>
-                    <div className="fixed inset-0 z-[310]" onClick={() => setIsHostelDropdownOpen(false)}></div>
-                    <div className="absolute z-[320] w-full mt-2 bg-surface border border-outline-variant rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200 max-h-60 overflow-y-auto">
-                      {["Old campus", "BH1 front side", "BH1 Back side", "BH2 Front side", "BH2 Backside"].map((hostel) => (
-                        <button
-                          key={hostel}
-                          type="button"
-                          onClick={() => {
-                            setSelectedHostel(hostel);
-                            setIsHostelDropdownOpen(false);
-                          }}
-                          className={`w-full text-left px-4 py-3 hover:bg-blue-50/50 transition-colors ${selectedHostel === hostel ? 'bg-blue-50/80 text-blue-700 font-semibold border-l-2 border-blue-500' : 'text-on-surface border-l-2 border-transparent'}`}
-                        >
-                          {hostel}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
               </div>
             </div>
             <div className="flex gap-4">
               <button onClick={() => setShowProgramModal(false)} className="flex-1 bg-surface-variant text-on-surface-variant py-3 rounded-xl font-label-md font-semibold hover:bg-outline-variant/30 transition-colors">Cancel</button>
               <button 
-                disabled={scholarshipId.length !== 12 || !selectedHostel}
+                disabled={scholarshipId.length !== 12 || !selectedHostel || !selectedGender || !selectedCourseType || (selectedProgram === 'B.Tech' && !selectedBranch)}
                 onClick={async () => { 
                   setShowProgramModal(false); 
+                  setIsSubmitting(true);
                   try {
                     const userStr = localStorage.getItem('user');
                     const user = userStr ? JSON.parse(userStr) : {};
                     
-                    // Save Scholarship ID to user profile
+                    // Save Scholarship ID and Program to student profile in students collection
                     const userRef = doc(db, 'students', user.id);
-                    await setDoc(userRef, { scholarshipId }, { merge: true });
-                    const updatedUser = { ...user, scholarshipId };
+                    await setDoc(userRef, { scholarshipId, program: selectedProgram }, { merge: true });
+                    const updatedUser = { ...user, scholarshipId, program: selectedProgram };
                     localStorage.setItem('user', JSON.stringify(updatedUser));
                     
-                    const crRef = doc(collection(db, 'clearanceRequests'));
-                    await setDoc(crRef, {
+                    const newData = {
                       studentId: user.id,
                       programType: selectedProgram,
+                      courseType: selectedProgram === 'PUC' ? selectedCourseType : selectedBranch,
+                      pucCourseType: selectedCourseType, // Save PUC course type explicitly
+                      gender: selectedGender,
                       presentHostel: selectedHostel,
                       status: 'PENDING',
                       createdAt: new Date().toISOString(),
                       updatedAt: new Date().toISOString()
-                    });
-                    await fetchDashboardData();
+                    };
+
+                    if (data?.clearanceRequest?.id) {
+                      const crRef = doc(db, 'clearanceRequests', data.clearanceRequest.id);
+                      await updateDoc(crRef, {
+                        programType: selectedProgram,
+                        courseType: selectedProgram === 'PUC' ? selectedCourseType : selectedBranch,
+                        pucCourseType: selectedCourseType,
+                        gender: selectedGender,
+                        presentHostel: selectedHostel,
+                        updatedAt: new Date().toISOString()
+                      });
+                    }
+                    
+                    // Add a small delay for smooth UX transition
+                    await new Promise(resolve => setTimeout(resolve, 800));
+                    
+                    setData((prev: any) => ({
+                      ...prev,
+                      clearanceRequest: { ...(prev?.clearanceRequest || {}), ...newData }
+                    }));
                   } catch(e) {
                     console.error(e);
+                  } finally {
+                    setIsSubmitting(false);
                   }
                 }} 
                 className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-label-md font-semibold hover:bg-blue-700 transition-colors shadow-md disabled:opacity-50"
               >
                 Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Final Submit Modal */}
+      {showConfirmSubmit && (
+        <div className="fixed inset-0 bg-primary/40 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
+          <div className="bg-surface-container-lowest rounded-2xl p-8 max-w-sm w-full shadow-2xl border border-surface-variant animate-in fade-in zoom-in-95 duration-200">
+            <h3 className="font-headline-md text-xl font-bold text-primary text-center mb-2">Confirm Submission</h3>
+            <p className="font-body-md text-on-surface-variant text-center mb-6">
+              Are you sure you want to submit your clearance request to all departments? This action cannot be undone.
+            </p>
+            <div className="flex gap-4">
+              <button onClick={() => setShowConfirmSubmit(false)} className="flex-1 bg-surface-variant text-on-surface-variant py-2.5 rounded-xl font-label-md font-semibold hover:bg-outline-variant/30 transition-colors">Cancel</button>
+              <button 
+                onClick={() => {
+                  setShowConfirmSubmit(false);
+                  handleSendRequest(departmentsToSubmit);
+                }}
+                className="flex-1 bg-blue-600 text-white py-2.5 rounded-xl font-label-md font-semibold hover:bg-blue-700 transition-colors"
+              >
+                Yes, Submit
               </button>
             </div>
           </div>
@@ -1173,8 +1724,8 @@ export default function StudentDashboard() {
             {isSubmitting ? (
               <>
                 <div className="w-20 h-20 mb-6 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
-                <h3 className="font-headline-md text-2xl font-bold text-primary">Submitting Requests...</h3>
-                <p className="text-on-surface-variant mt-2">Please wait while we notify the departments.</p>
+                <h3 className="font-headline-md text-2xl font-bold text-primary">Please wait...</h3>
+                <p className="text-on-surface-variant mt-2">Processing your request...</p>
               </>
             ) : (
               <>
@@ -1182,7 +1733,7 @@ export default function StudentDashboard() {
                   <CheckCircle2 className="w-10 h-10" />
                 </div>
                 <h3 className="font-headline-md text-2xl font-bold text-green-600">Requests Sent!</h3>
-                <p className="text-on-surface-variant mt-2">Redirecting to status page...</p>
+                <p className="text-on-surface-variant mt-2">Redirecting to status page in {countdown}...</p>
               </>
             )}
           </div>
@@ -1259,27 +1810,54 @@ export default function StudentDashboard() {
               )}
             </div>
             
-            <div className="space-y-3 mb-6 max-h-60 overflow-y-auto pr-2">
-              {data?.clearanceRequest?.departmentClearances
-                ?.filter((d: any) => d.feeDue > 0)
-                .map((d: any, idx: number) => (
-                <div key={idx} className="flex justify-between items-center p-3 bg-surface-variant/30 rounded-xl border border-surface-variant/50">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-primary shadow-sm border border-outline-variant/30">
-                      {getIcon(d.departmentName)}
-                    </div>
-                    <span className="font-bold text-slate-700">{d.departmentName}</span>
-                  </div>
-                  <span className="font-bold text-amber-700">₹{d.feeDue}</span>
+            <div className="space-y-3 mb-6 max-h-72 overflow-y-auto pr-1">
+              {isLoadingDetailedDues ? (
+                <div className="py-8 flex flex-col items-center justify-center gap-2 text-slate-500">
+                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-xs font-medium">Loading individual penalty breakdown...</span>
                 </div>
-              ))}
+              ) : detailedDuesGroups.length > 0 ? (
+                detailedDuesGroups.map((g, gIdx) => (
+                  <div key={gIdx} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+                    <div className="bg-slate-100/80 px-3.5 py-2 flex justify-between items-center border-b border-slate-200">
+                      <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800 uppercase tracking-wide">
+                        <Building className="w-3.5 h-3.5 text-primary" />
+                        <span>{g.department}</span>
+                      </div>
+                      <span className="font-bold text-xs text-slate-900">₹{g.subtotal.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="p-2 space-y-1.5">
+                      {g.items.map((item, iIdx) => (
+                        <div key={iIdx} className="flex justify-between items-center text-xs px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-100">
+                          <span className="text-slate-700 font-medium">{item.reason}</span>
+                          <span className="font-bold text-red-600">₹{item.amount.toLocaleString('en-IN')}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                data?.clearanceRequest?.departmentClearances
+                  ?.filter((d: any) => d.feeDue > 0)
+                  .map((d: any, idx: number) => (
+                  <div key={idx} className="flex justify-between items-center p-3 bg-surface-variant/30 rounded-xl border border-surface-variant/50">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-primary shadow-sm border border-outline-variant/30">
+                        {getIcon(d.departmentName)}
+                      </div>
+                      <span className="font-bold text-slate-700">{d.departmentName}</span>
+                    </div>
+                    <span className="font-bold text-amber-700">₹{d.feeDue}</span>
+                  </div>
+                ))
+              )}
               
-              {(!data?.clearanceRequest?.departmentClearances || data.clearanceRequest.departmentClearances.filter((d: any) => d.feeDue > 0).length === 0) && (
+              {(!data?.clearanceRequest?.departmentClearances || data.clearanceRequest.departmentClearances.filter((d: any) => d.feeDue > 0).length === 0) && detailedDuesGroups.length === 0 && !isLoadingDetailedDues && (
                 <p className="text-center text-slate-500 py-4 text-sm font-medium">No active fee dues found.</p>
               )}
             </div>
 
-            <div className={`flex justify-between items-center p-4 rounded-xl border mb-6 ${data?.clearanceRequest?.paymentReferenceId ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+            <div className={`flex justify-between items-center p-4 rounded-xl border mb-4 ${data?.clearanceRequest?.paymentReferenceId ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
               <div>
                 <span className={`block font-bold ${data?.clearanceRequest?.paymentReferenceId ? 'text-green-900' : 'text-amber-900'}`}>Total Due:</span>
                 {data?.clearanceRequest?.paymentReferenceId && (
@@ -1291,11 +1869,24 @@ export default function StudentDashboard() {
               <span className={`text-xl font-bold ${data?.clearanceRequest?.paymentReferenceId ? 'text-green-700' : 'text-amber-700'}`}>₹{data?.clearanceRequest?.totalFeeDue || 0}</span>
             </div>
 
+            {/* Official PDF Download Button in Modal */}
+            <button
+              onClick={handleGeneratePdf}
+              disabled={isGeneratingPdf}
+              className="w-full mb-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-bold py-2.5 rounded-xl shadow-sm flex items-center justify-center gap-2 text-sm transition-all disabled:opacity-50 cursor-pointer"
+            >
+              {isGeneratingPdf ? (
+                <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Generating PDF...</>
+              ) : (
+                <><FileText className="w-4 h-4" /> Download Official PDF Report</>
+              )}
+            </button>
+
             {data?.clearanceRequest?.paymentReferenceId ? (
-              <div className="flex gap-4">
+              <div className="flex gap-3">
                 <button 
                   onClick={() => setShowFeeBreakdown(false)} 
-                  className="flex-1 bg-surface-variant text-on-surface-variant py-3 rounded-xl font-label-md font-semibold hover:bg-outline-variant/30 transition-colors"
+                  className="flex-1 bg-surface-variant text-on-surface-variant py-2.5 rounded-xl font-label-md font-semibold hover:bg-outline-variant/30 transition-colors"
                 >
                   Close
                 </button>
@@ -1304,7 +1895,7 @@ export default function StudentDashboard() {
                     setShowFeeBreakdown(false);
                     setShowFeeReceipt(true);
                   }}
-                  className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-label-md font-semibold transition-colors shadow-sm flex items-center justify-center gap-2"
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl font-label-md font-semibold transition-colors shadow-sm flex items-center justify-center gap-2"
                 >
                   Download Receipt
                 </button>
@@ -1312,7 +1903,7 @@ export default function StudentDashboard() {
             ) : (
               <button 
                 onClick={() => setShowFeeBreakdown(false)} 
-                className="w-full bg-primary hover:bg-primary-hover text-white py-3 rounded-xl font-label-md font-semibold transition-colors shadow-sm"
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl font-label-md font-semibold transition-colors shadow-xs"
               >
                 Close
               </button>

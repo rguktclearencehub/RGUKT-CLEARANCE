@@ -6,6 +6,8 @@ import DepartmentDashboard from './pages/DepartmentDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import Bubbles from './components/Bubbles';
 
+import DownloadDues from './pages/DownloadDues';
+
 function App() {
   return (
     <>
@@ -17,6 +19,7 @@ function App() {
         <Route path="/student/dashboard" element={<StudentDashboard />} />
         <Route path="/department/dashboard" element={<DepartmentDashboard />} />
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
+        <Route path="/download-dues" element={<DownloadDues />} />
       </Routes>
     </Router>
     </>

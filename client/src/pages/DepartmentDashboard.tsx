@@ -1,9 +1,25 @@
 import { useEffect, useState, useRef } from 'react';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, doc, getDoc, updateDoc, setDoc, limit, increment } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, setDoc, limit, increment, deleteDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FileText, Settings, LogOut, Search, Bell, CheckCircle2, AlertCircle, Clock, ShieldCheck, CheckSquare, Printer, Building2 } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, Settings, LogOut, Search, Bell, CheckCircle2, AlertCircle, Clock, ShieldCheck, CheckSquare, Printer, Building2, FlaskConical, BookOpen, Monitor, GraduationCap, Briefcase, Dumbbell, Award, ClipboardList } from 'lucide-react';
 import emailjs from '@emailjs/browser';
+import { generateDuesPdfBlob, uploadToGoogleDrive, getDriveDownloadLink, getDrivePreviewLink, fetchDetailedStudentDues, downloadPdfDirectly, type DepartmentDuesGroup } from '../utils/pdfGenerator';
+
+const getDepartmentIcon = (deptName: string | null) => {
+  if (!deptName) return Building2;
+  const name = deptName.toLowerCase();
+  if (name.includes('hostel')) return Building2;
+  if (name.includes('dsw')) return Users;
+  if (name.includes('sports')) return Dumbbell;
+  if (name.includes('lab') || name.includes('physics') || name.includes('chemistry') || name.includes('biology')) return FlaskConical;
+  if (name.includes('library')) return BookOpen;
+  if (name.includes('it infra') || name.includes('engg')) return Monitor;
+  if (name.includes('scholarship')) return GraduationCap;
+  if (name.includes('fo') || name.includes('accounts')) return Briefcase;
+  if (name.includes('director') || name.includes('dean') || name.includes('hod') || name.includes('coe') || name.includes('ao')) return Award;
+  return Building2;
+};
 import NoDueCertificate from '../components/NoDueCertificate';
 import HostelPenaltyManager from '../components/HostelPenaltyManager';
 
@@ -19,21 +35,139 @@ export default function DepartmentDashboard() {
   const [showCertificate, setShowCertificate] = useState(false);
   const [remarks, setRemarks] = useState('');
   const [feeAmount, setFeeAmount] = useState('');
+  const [maintenanceFee, setMaintenanceFee] = useState('');
   const [referenceId, setReferenceId] = useState('');
   const [fetchedFee, setFetchedFee] = useState<number | null>(null);
   const [fetchedPenalties, setFetchedPenalties] = useState<any[] | null>(null);
+  const [fetchedAllDeptDues, setFetchedAllDeptDues] = useState<DepartmentDuesGroup[] | null>(null);
   const [isFetchingFee, setIsFetchingFee] = useState(false);
   const [isDuesAdded, setIsDuesAdded] = useState(false);
   const [isAddingDues, setIsAddingDues] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [isConfirmed, setIsConfirmed] = useState(false);
+  const [showConfirmPopup, setShowConfirmPopup] = useState(false);
+  const [isForwarding, setIsForwarding] = useState(false);
   const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [forwardingAnim, setForwardingAnim] = useState<{ isAnimating: boolean; nextDept: string | null; progress: boolean; completed: boolean }>({ isAnimating: false, nextDept: null, progress: false, completed: false });
   const [actionType, setActionType] = useState<'APPROVE' | 'REJECT' | null>(null);
   const [departmentName, setDepartmentName] = useState('Department');
-  const [currentTab, setCurrentTab] = useState<'requests' | 'hostelPenalty'>('requests');
+  const [currentTab, setCurrentTab] = useState<'requests' | 'hostelPenalty' | 'dswPenalty' | 'labPenalty' | 'libraryPenalty' | 'itInfraPenalty' | 'profile'>('requests');
+  const [selectedHostelView, setSelectedHostelView] = useState<string | null>(null);
+  const [wardenName, setWardenName] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const isHostelWarden = departmentName === 'Boys Hostel' || departmentName === 'Girls Hostel';
+  const isLabDept = ['Physics Lab', 'Chemistry Lab', 'Biology Lab'].includes(departmentName);
+
+  // COE Academic Status Check state
+  const [showAcademicModal, setShowAcademicModal] = useState(false);
+  const [coeAcademicCheck, setCoeAcademicCheck] = useState<{
+    checked: boolean;
+    hasRemedial: boolean;
+    remedialSemesters: string[];
+    records: Record<string, 'PASS' | 'REMEDIAL'>;
+  } | null>(null);
+  const [academicProgramType, setAcademicProgramType] = useState<'PUC' | 'B.Tech'>('PUC');
+  const [academicFormRecords, setAcademicFormRecords] = useState<Record<string, 'PASS' | 'REMEDIAL'>>({});
+
+  // Scholarship Office state
+  const [scholarshipRecords, setScholarshipRecords] = useState<Record<string, { credited: string; due: string }>>({});
+  const [scholarshipProgramType, setScholarshipProgramType] = useState<'PUC' | 'B.Tech'>('PUC');
+
+  const getClearanceProgram = (c: any): 'PUC' | 'B.Tech' => {
+    if (!c) return 'PUC';
+    const raw = (c.programType || c.program || c.student?.program || '').trim().toLowerCase();
+    if (raw === 'b.tech' || raw === 'btech') return 'B.Tech';
+    return 'PUC';
+  };
+
+  const openAcademicModal = () => {
+    const prog = getClearanceProgram(selectedClearance);
+    setAcademicProgramType(prog);
+    
+    const sems = prog === 'B.Tech' ? BTECH_SEMESTERS : PUC_SEMESTERS;
+    const allowedSemNames = new Set<string>();
+    sems.forEach(grp => grp.sems.forEach(s => allowedSemNames.add(s)));
+
+    const existingRecords = coeAcademicCheck?.records || selectedClearance?.academicRecord || {};
+    const initial: Record<string, 'PASS' | 'REMEDIAL'> = {};
+    allowedSemNames.forEach(s => {
+      initial[s] = existingRecords[s] || 'PASS';
+    });
+
+    setAcademicFormRecords(initial);
+    setShowAcademicModal(true);
+  };
+
+  const handleProgramToggle = (newProg: 'PUC' | 'B.Tech') => {
+    setAcademicProgramType(newProg);
+    const sems = newProg === 'B.Tech' ? BTECH_SEMESTERS : PUC_SEMESTERS;
+    const allowedSemNames = new Set<string>();
+    sems.forEach(grp => grp.sems.forEach(s => allowedSemNames.add(s)));
+
+    setAcademicFormRecords(prev => {
+      const updated: Record<string, 'PASS' | 'REMEDIAL'> = {};
+      allowedSemNames.forEach(s => {
+        updated[s] = prev[s] || 'PASS';
+      });
+      return updated;
+    });
+  };
+
+  const handleMarkAllPass = () => {
+    const sems = academicProgramType === 'B.Tech' ? BTECH_SEMESTERS : PUC_SEMESTERS;
+    const updated: Record<string, 'PASS' | 'REMEDIAL'> = {};
+    sems.forEach(grp => {
+      grp.sems.forEach(s => {
+        updated[s] = 'PASS';
+      });
+    });
+    setAcademicFormRecords(updated);
+  };
+
+  const handleSemesterStatusChange = (sem: string, status: 'PASS' | 'REMEDIAL') => {
+    setAcademicFormRecords(prev => ({
+      ...prev,
+      [sem]: status
+    }));
+  };
+
+  const handleSaveAcademicStatus = () => {
+    const prog = academicProgramType;
+    const sems = prog === 'B.Tech' ? BTECH_SEMESTERS : PUC_SEMESTERS;
+    
+    const allSemNames: string[] = [];
+    sems.forEach(grp => grp.sems.forEach(s => allSemNames.push(s)));
+    
+    const cleanRecords: Record<string, 'PASS' | 'REMEDIAL'> = {};
+    allSemNames.forEach(s => {
+      cleanRecords[s] = academicFormRecords[s] || 'PASS';
+    });
+
+    const remedials = allSemNames.filter(s => cleanRecords[s] === 'REMEDIAL');
+    const hasRemedial = remedials.length > 0;
+    
+    const checkResult = {
+      checked: true,
+      hasRemedial,
+      remedialSemesters: remedials,
+      records: cleanRecords
+    };
+    
+    setCoeAcademicCheck(checkResult);
+    setShowAcademicModal(false);
+    
+    if (hasRemedial) {
+      setRemarks(`Academic clearance rejected by COE: Remedial pending in ${remedials.join(', ')}.`);
+      setActionType('REJECT');
+    } else {
+      if (remarks.startsWith('Academic clearance rejected')) {
+        setRemarks('');
+      }
+      setActionType(null);
+    }
+  };
   const navigate = useNavigate();
   const notificationRef = useRef<HTMLDivElement>(null);
 
@@ -55,36 +189,281 @@ export default function DepartmentDashboard() {
     return name.replace(new RegExp(`^${id}\\s*`, 'i'), '').trim();
   };
 
+  const PUC_SEMESTERS = [
+    { group: 'PUC 1 (P1)', sems: ['PUC-1 Sem 1', 'PUC-1 Sem 2'] },
+    { group: 'PUC 2 (P2)', sems: ['PUC-2 Sem 1', 'PUC-2 Sem 2'] }
+  ];
+
+  const BTECH_SEMESTERS = [
+    { group: 'PUC 1 (P1)', sems: ['PUC-1 Sem 1', 'PUC-1 Sem 2'] },
+    { group: 'PUC 2 (P2)', sems: ['PUC-2 Sem 1', 'PUC-2 Sem 2'] },
+    { group: 'B.Tech 1st Year (E1)', sems: ['B.Tech E1 Sem 1', 'B.Tech E1 Sem 2'] },
+    { group: 'B.Tech 2nd Year (E2)', sems: ['B.Tech E2 Sem 1', 'B.Tech E2 Sem 2'] },
+    { group: 'B.Tech 3rd Year (E3)', sems: ['B.Tech E3 Sem 1', 'B.Tech E3 Sem 2'] },
+    { group: 'B.Tech 4th Year (E4)', sems: ['B.Tech E4 Sem 1', 'B.Tech E4 Sem 2'] }
+  ];
+
+  const SCHOLARSHIP_YEARS_DEF = [
+    { id: 'puc1', name: 'PUC 1st Year (P1)', totalGrant: 45000, category: 'PUC' as const },
+    { id: 'puc2', name: 'PUC 2nd Year (P2)', totalGrant: 45000, category: 'PUC' as const },
+    { id: 'e1', name: 'B.Tech 1st Year (E1)', totalGrant: 50000, category: 'B.Tech' as const },
+    { id: 'e2', name: 'B.Tech 2nd Year (E2)', totalGrant: 50000, category: 'B.Tech' as const },
+    { id: 'e3', name: 'B.Tech 3rd Year (E3)', totalGrant: 50000, category: 'B.Tech' as const },
+    { id: 'e4', name: 'B.Tech 4th Year (E4)', totalGrant: 50000, category: 'B.Tech' as const },
+  ];
+
+  // Automatically determine if selected student is B.Tech or PUC
+  const currentStudentProgram: 'PUC' | 'B.Tech' = getClearanceProgram(selectedClearance);
+  const isSelectedStudentBTech = currentStudentProgram === 'B.Tech';
+
+  const activeScholarshipYears = SCHOLARSHIP_YEARS_DEF.filter(y => {
+    if (currentStudentProgram === 'PUC') return y.category === 'PUC';
+    return true; // For B.Tech: PUC 1, PUC 2, and B.Tech 1st to 4th Year (all 6 years in a single form)
+  });
+
+  const totalScholarshipDue = activeScholarshipYears.reduce((sum, y) => {
+    const rec = scholarshipRecords[y.id];
+    if (!rec || rec.due === undefined || rec.due === '') return sum;
+    return sum + (parseFloat(rec.due) || 0);
+  }, 0);
+
+  const totalScholarshipCredited = activeScholarshipYears.reduce((sum, y) => {
+    const rec = scholarshipRecords[y.id];
+    if (!rec || rec.credited === undefined || rec.credited === '') return sum;
+    return sum + (parseFloat(rec.credited) || 0);
+  }, 0);
+
+  const totalScholarshipEntitled = activeScholarshipYears.reduce((sum, y) => sum + y.totalGrant, 0);
+
+  const handleScholarshipCreditedChange = (yearId: string, valStr: string) => {
+    const yearDef = SCHOLARSHIP_YEARS_DEF.find(y => y.id === yearId);
+    if (!yearDef) return;
+
+    if (valStr.trim() === '') {
+      setScholarshipRecords(prev => {
+        const next = { ...prev };
+        delete next[yearId];
+        return next;
+      });
+      return;
+    }
+
+    const creditedNum = Math.max(0, parseFloat(valStr) || 0);
+    const dueNum = Math.max(0, yearDef.totalGrant - creditedNum);
+
+    setScholarshipRecords(prev => ({
+      ...prev,
+      [yearId]: {
+        credited: valStr,
+        due: dueNum.toString()
+      }
+    }));
+  };
+
+  const handleScholarshipDueChange = (yearId: string, valStr: string) => {
+    const yearDef = SCHOLARSHIP_YEARS_DEF.find(y => y.id === yearId);
+    if (!yearDef) return;
+
+    if (valStr.trim() === '') {
+      setScholarshipRecords(prev => {
+        const next = { ...prev };
+        delete next[yearId];
+        return next;
+      });
+      return;
+    }
+
+    const dueNum = Math.max(0, parseFloat(valStr) || 0);
+    const creditedNum = Math.max(0, yearDef.totalGrant - dueNum);
+
+    setScholarshipRecords(prev => ({
+      ...prev,
+      [yearId]: {
+        credited: creditedNum.toString(),
+        due: valStr
+      }
+    }));
+  };
+
+  const handleMarkAllFullCredited = () => {
+    const updated: Record<string, { credited: string; due: string }> = {};
+    activeScholarshipYears.forEach(y => {
+      updated[y.id] = {
+        credited: y.totalGrant.toString(),
+        due: '0'
+      };
+    });
+    setScholarshipRecords(updated);
+  };
+
+  const handleClearScholarship = () => {
+    setScholarshipRecords({});
+  };
+
+  useEffect(() => {
+    if (departmentName === 'Scholarship Office' && selectedClearance) {
+      if (totalScholarshipDue > 0) {
+        setFeeAmount(totalScholarshipDue.toString());
+        setActionType('APPROVE');
+      } else {
+        setFeeAmount('0');
+      }
+    }
+  }, [departmentName, selectedClearance?.id, totalScholarshipDue]);
+
+  const handleSelectClearance = async (c: any) => {
+    setSelectedClearance(c);
+    setFetchedFee(null);
+    setFetchedPenalties(null);
+    setFetchedAllDeptDues(null);
+    setActionType(null);
+    setRemarks('');
+    setFeeAmount('');
+    setMaintenanceFee('');
+    setReferenceId('');
+    setIsDuesAdded(false);
+    setIsAddingDues(false);
+    if (c.academicStatus) {
+      const isBTech = getClearanceProgram(c) === 'B.Tech';
+      const rawRecords = (c.academicRecord as Record<string, 'PASS' | 'REMEDIAL'>) || {};
+      const filteredRecords: Record<string, 'PASS' | 'REMEDIAL'> = {};
+      const sems = isBTech ? BTECH_SEMESTERS : PUC_SEMESTERS;
+      sems.forEach(grp => grp.sems.forEach(s => {
+        if (rawRecords[s]) filteredRecords[s] = rawRecords[s];
+      }));
+      const remedials = Object.keys(filteredRecords).filter(s => filteredRecords[s] === 'REMEDIAL');
+      setCoeAcademicCheck({
+        checked: true,
+        hasRemedial: remedials.length > 0,
+        remedialSemesters: remedials,
+        records: filteredRecords
+      });
+    } else {
+      setCoeAcademicCheck(null);
+    }
+
+    if (departmentName === 'Scholarship Office') {
+      const prog = getClearanceProgram(c);
+      setScholarshipProgramType(prog);
+
+      if (c.scholarshipDetails?.records) {
+        setScholarshipRecords(c.scholarshipDetails.records);
+        if (c.scholarshipDetails.totalDue > 0) {
+          setFeeAmount(c.scholarshipDetails.totalDue.toString());
+        }
+      } else if (c.student?.studentId) {
+        try {
+          const sDoc = await getDoc(doc(db, 'scholarshipRecords', c.student.studentId));
+          if (sDoc.exists() && sDoc.data().records) {
+            setScholarshipRecords(sDoc.data().records);
+            if (sDoc.data().totalDue > 0) {
+              setFeeAmount(sDoc.data().totalDue.toString());
+            }
+          } else {
+            setScholarshipRecords({});
+          }
+        } catch (err) {
+          console.error('Error loading scholarship record:', err);
+          setScholarshipRecords({});
+        }
+      } else {
+        setScholarshipRecords({});
+      }
+    }
+  };
+
+
   const PUC_DEPARTMENTS = [
-    'Hostel', 'Sports', 'Physics Lab', 'Chemistry Lab', 'Biology Lab',
+    'Hostel', 'DSW', 'Sports', 'Physics Lab', 'Chemistry Lab', 'Biology Lab',
     'COE', 'Library', 'IT Infra', 'Scholarship Office',
     'FO', 'AO', 'Director', 'Dean of Academics'
   ];
 
   const BTECH_DEPARTMENTS = [
-    'Hostel', 'Sports', 'Physics Lab', 'Chemistry Lab', 'Biology Lab',
+    'Hostel', 'DSW', 'Sports', 'Physics Lab', 'Chemistry Lab', 'Biology Lab', 'Engg Labs',
     'COE', 'HOD', 'Library', 'IT Infra', 'Scholarship Office',
     'FO', 'AO', 'Director', 'Dean of Academics'
   ];
 
-  // Keep a combined list just for getExactDeptName
-  const DEPARTMENTS = [...new Set([...PUC_DEPARTMENTS, ...BTECH_DEPARTMENTS])];
+  const getDepartmentSequence = (
+    programType?: string | null,
+    pucCourseType?: string | null,
+    courseType?: string | null
+  ) => {
+    const isBTech = programType === 'B.Tech';
+    const base = isBTech ? BTECH_DEPARTMENTS : PUC_DEPARTMENTS;
+    const isMpc = pucCourseType === 'MPC' || (!isBTech && courseType === 'MPC');
+    return base.filter(d => !(isMpc && d === 'Biology Lab'));
+  };
 
-  const getExactDeptName = (rawName: string) => {
-    const normalized = rawName.replace(/\s+/g, '').toLowerCase();
-    if (normalized === 'accounts' || normalized === 'fo') return 'FO';
-    return DEPARTMENTS.find(d => d.replace(/\s+/g, '').toLowerCase() === normalized) || rawName;
+  const PUC_HOSTELS = ["Old campus", "BH1 front side"];
+  const BTECH_HOSTELS = ["BH1 Back side", "BH2 Front side", "BH2 Backside", "GH1", "GH2"];
+  const ALL_HOSTELS = [...PUC_HOSTELS, ...BTECH_HOSTELS];
+  
+  const BOYS_HOSTELS = ["BH1 front side", "BH1 Back side", "BH2 Front side", "BH2 Backside"];
+  const GIRLS_HOSTELS = ["Old campus", "GH1", "GH2"];
+
+  // Keep a combined list just for getExactDeptName
+  const DEPARTMENTS = [...new Set([...PUC_DEPARTMENTS, ...BTECH_DEPARTMENTS, 'Boys Hostel', 'Girls Hostel'])];
+
+  const getExactDeptName = (user: any) => {
+    if (!user) return '';
+
+    // 1. Direct email prefix match (foolproof)
+    const email = (typeof user === 'object' && user?.email ? user.email : '').toLowerCase().trim();
+    if (email.startsWith('dsw@')) return 'DSW';
+    if (email.startsWith('sports@')) return 'Sports';
+    if (email.startsWith('boys_hostel@')) return 'Boys Hostel';
+    if (email.startsWith('girls_hostel@')) return 'Girls Hostel';
+    if (email.startsWith('hostel@')) return 'Hostel';
+    if (email.startsWith('physicslab@')) return 'Physics Lab';
+    if (email.startsWith('chemistrylab@')) return 'Chemistry Lab';
+    if (email.startsWith('biologylab@')) return 'Biology Lab';
+    if (email.startsWith('engglabs@') || email.startsWith('engglabsassistant@')) return 'Engg Labs';
+    if (email.startsWith('coe@')) return 'COE';
+    if (email.startsWith('library@')) return 'Library';
+    if (email.startsWith('itinfra@')) return 'IT Infra';
+    if (email.startsWith('scholarshipoffice@')) return 'Scholarship Office';
+    if (email.startsWith('fo@') || email.startsWith('accounts@')) return 'FO';
+    if (email.startsWith('ao@')) return 'AO';
+    if (email.startsWith('director@')) return 'Director';
+    if (email.startsWith('deanofacademics@')) return 'Dean of Academics';
+
+    // 2. Extract string candidates from user.departmentName, user.name, or user if string
+    const candidates = [
+      typeof user === 'object' ? user.departmentName : null,
+      typeof user === 'object' ? user.name : null,
+      typeof user === 'string' ? user : null
+    ];
+
+    for (const cand of candidates) {
+      if (!cand || typeof cand !== 'string') continue;
+      const cleaned = cand.trim();
+      // Remove trailing " Admin" or " admin"
+      const noAdmin = cleaned.replace(/\s+admin$/i, '').trim();
+
+      for (const text of [cleaned, noAdmin]) {
+        const normalized = text.replace(/\s+/g, '').toLowerCase();
+        if (normalized === 'accounts' || normalized === 'fo') return 'FO';
+        if (normalized === 'deanofstudentwelfare' || normalized === 'dsw') return 'DSW';
+        const match = DEPARTMENTS.find(d => d.replace(/\s+/g, '').toLowerCase() === normalized);
+        if (match) return match;
+      }
+    }
+
+    return typeof user === 'object' ? (user.departmentName || user.name || '') : user;
   };
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
     if (!userStr) {
-      navigate('/login');
+      navigate('/login', { replace: true });
       return;
     }
     const user = JSON.parse(userStr);
-    const exactName = getExactDeptName(user.name);
+    const exactName = getExactDeptName(user);
     setDepartmentName(exactName);
+    setWardenName(user.wardenName || '');
 
     fetchClearances(exactName);
 
@@ -136,8 +515,18 @@ export default function DepartmentDashboard() {
                       id: change.doc.id,
                       ...data,
                       student: studentDetails,
-                      totalFeeDue: crSnap.data().totalFeeDue || 0
+                      totalFeeDue: crSnap.data().totalFeeDue || 0,
+                      presentHostel: crSnap.data().presentHostel || null,
+                      programType: crSnap.data().programType || crSnap.data().program || studentDetails.program || 'PUC',
+                      courseType: crSnap.data().courseType || null,
+                      pucCourseType: crSnap.data().pucCourseType || null
                     };
+                    
+                    // Don't show MPC students in Biology Lab
+                    if (departmentName === 'Biology Lab') {
+                      const isMpc = newClearance.pucCourseType === 'MPC' || (newClearance.programType === 'PUC' && newClearance.courseType === 'MPC');
+                      if (isMpc) return prev;
+                    }
                     
                     // Add to list and show notification dot
                     setClearances(curr => {
@@ -165,6 +554,23 @@ export default function DepartmentDashboard() {
       return unsubscribe;
     });
 
+    // Prevent back navigation
+    window.history.pushState(null, '', window.location.href);
+    const handlePopState = () => {
+      setCurrentTab(prev => {
+        if (prev !== 'requests') {
+          window.history.pushState(null, '', window.location.href);
+          return 'requests';
+        }
+        window.history.pushState(null, '', window.location.href);
+        return prev;
+      });
+    };
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, [navigate]);
 
   async function fetchClearances(deptName: string) {
@@ -200,52 +606,127 @@ export default function DepartmentDashboard() {
             student: studentDetails,
             totalFeeDue: crSnap.data().totalFeeDue || 0,
             feeReceiptUrl: crSnap.data().feeReceiptUrl || null,
-            presentHostel: crSnap.data().presentHostel || null
+            presentHostel: crSnap.data().presentHostel || null,
+            programType: crSnap.data().programType || crSnap.data().program || studentDetails.program || 'PUC',
+            courseType: crSnap.data().courseType || null,
+            pucCourseType: crSnap.data().pucCourseType || null
           });
         }
       }
       
-      const visibleRequests = requests.filter((r: any) => r.status !== 'LOCKED');
+      const visibleRequests = requests.filter((r: any) => {
+        if (r.status === 'LOCKED') return false;
+        if (deptName === 'Biology Lab') {
+          const isMpc = r.pucCourseType === 'MPC' || (r.programType === 'PUC' && r.courseType === 'MPC');
+          if (isMpc) return false;
+        }
+        return true;
+      });
       setClearances(visibleRequests);
     } catch (err) {
       console.error(err);
-      navigate('/login');
+      navigate('/login', { replace: true });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAction = async () => {
-    if (!selectedClearance || !actionType) return;
+  const handleAction = async (targetActionType?: 'APPROVE' | 'REJECT') => {
+    const actType = targetActionType || actionType;
+    if (!selectedClearance || !actType) return;
 
-    if (actionType === 'APPROVE' && departmentName === 'FO' && selectedClearance.totalFeeDue > 0 && !referenceId.trim()) {
+    if (actType === 'REJECT' && !remarks.trim()) {
+      alert("Please enter a remark explaining the reason for rejection.");
+      return;
+    }
+
+    const currentDisplayDue = isDuesAdded ? Number(feeAmount) : 0;
+    if (actType === 'APPROVE' && departmentName === 'FO' && currentDisplayDue > 0 && !referenceId.trim()) {
       alert("Please enter the Payment Reference ID to approve this request.");
       return;
     }
 
+    setActionType(actType);
     setIsConfirming(true);
     try {
       const dcRef = doc(db, 'departmentClearances', selectedClearance.id);
-      const newStatus = actionType === 'APPROVE' ? 'APPROVED' : 'REJECTED';
-      const feeNum = parseFloat(feeAmount) || 0;
+      const newStatus = actType === 'APPROVE' ? 'APPROVED' : 'REJECTED';
+      const baseFee = parseFloat(feeAmount) || 0;
+      const maintFee = departmentName === 'DSW' ? (parseFloat(maintenanceFee) || 0) : 0;
+      const feeNum = baseFee + maintFee;
+      
+      const userStr = localStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
       
       const dcUpdateData: any = {
         status: newStatus,
         remarks: remarks || '',
         updatedAt: new Date().toISOString()
       };
-      if (feeNum > 0) dcUpdateData.feeDue = feeNum;
-      if (departmentName === 'FO' && referenceId.trim()) dcUpdateData.referenceId = referenceId;
-      
+      if (departmentName === 'COE' && coeAcademicCheck) {
+        dcUpdateData.academicStatus = coeAcademicCheck.hasRemedial ? 'REMEDIAL' : 'PASSED';
+        dcUpdateData.remedialSemesters = coeAcademicCheck.remedialSemesters || [];
+        dcUpdateData.academicRecord = coeAcademicCheck.records || {};
+      }
+      if (user && user.wardenName) {
+        dcUpdateData.handledBy = user.wardenName;
+      }
+      if (feeNum > 0) {
+        dcUpdateData.feeDue = feeNum;
+        if (maintFee > 0) dcUpdateData.maintenanceFee = maintFee;
+        if (fetchedPenalties && fetchedPenalties.length > 0) {
+          dcUpdateData.penalties = fetchedPenalties.map((p: any) => ({
+            reason: p.reason,
+            amount: Number(p.amount) || 0
+          }));
+        }
+      }
+      if (departmentName === 'Scholarship Office') {
+        const scholarshipPayload = {
+          program: currentStudentProgram,
+          records: scholarshipRecords,
+          totalCredited: totalScholarshipCredited,
+          totalDue: totalScholarshipDue,
+          years: activeScholarshipYears.map(y => ({
+            id: y.id,
+            name: y.name,
+            totalGrant: y.totalGrant,
+            credited: parseFloat(scholarshipRecords[y.id]?.credited) || 0,
+            due: parseFloat(scholarshipRecords[y.id]?.due) || 0
+          })),
+          updatedAt: new Date().toISOString()
+        };
+        dcUpdateData.scholarshipDetails = scholarshipPayload;
+
+        if (selectedClearance.student?.studentId) {
+          try {
+            await setDoc(doc(db, 'scholarshipRecords', selectedClearance.student.studentId), {
+              studentId: selectedClearance.student.studentId,
+              studentName: selectedClearance.student?.name || '',
+              scholarshipId: selectedClearance.student?.scholarshipId || '',
+              ...scholarshipPayload
+            }, { merge: true });
+          } catch (sErr) {
+            console.error('Error saving scholarship record doc:', sErr);
+          }
+        }
+      }
+
       await updateDoc(dcRef, dcUpdateData);
+
       
       const crRef = doc(db, 'clearanceRequests', selectedClearance.requestId);
-      const programType = selectedClearance.student?.program || 'PUC';
-      const currentSequence = programType === 'B.Tech' ? BTECH_DEPARTMENTS : PUC_DEPARTMENTS;
-      const currentIndex = currentSequence.indexOf(departmentName);
+      const programType = getClearanceProgram(selectedClearance);
+      const currentSequence = getDepartmentSequence(programType, selectedClearance.pucCourseType, selectedClearance.courseType);
+      const seqDeptName = (departmentName === 'Boys Hostel' || departmentName === 'Girls Hostel') ? 'Hostel' : departmentName;
+      const currentIndex = currentSequence.indexOf(seqDeptName);
       const isLast = currentIndex === currentSequence.length - 1;
 
       const crUpdateData: any = { updatedAt: new Date().toISOString() };
+      
+      if (departmentName === 'Scholarship Office' && dcUpdateData.scholarshipDetails) {
+        crUpdateData.scholarshipDetails = dcUpdateData.scholarshipDetails;
+      }
       
       if (newStatus === 'REJECTED') {
         crUpdateData.status = 'REJECTED';
@@ -284,9 +765,80 @@ export default function DepartmentDashboard() {
             await updateDoc(doc(db, 'hostelPenalties', hpDoc.id), { status: 'PAID', updatedAt: new Date().toISOString() });
           }
         }
+
+        // Update dswPenalties
+        if (selectedClearance.student?.studentId) {
+          const dswQuery = query(collection(db, 'dswPenalties'), where('studentId', '==', selectedClearance.student.studentId), where('status', '==', 'PENDING'));
+          const dswSnap = await getDocs(dswQuery);
+          for (const dswDoc of dswSnap.docs) {
+            await updateDoc(doc(db, 'dswPenalties', dswDoc.id), { status: 'PAID', updatedAt: new Date().toISOString() });
+          }
+        }
+
+        // Update libraryPenalties
+        if (selectedClearance.student?.studentId) {
+          const libQuery = query(collection(db, 'libraryPenalties'), where('studentId', '==', selectedClearance.student.studentId), where('status', '==', 'PENDING'));
+          const libSnap = await getDocs(libQuery);
+          for (const libDoc of libSnap.docs) {
+            await updateDoc(doc(db, 'libraryPenalties', libDoc.id), { status: 'PAID', updatedAt: new Date().toISOString() });
+          }
+        }
+
+        // Update itInfraPenalties
+        if (selectedClearance.student?.studentId) {
+          const itQuery = query(collection(db, 'itInfraPenalties'), where('studentId', '==', selectedClearance.student.studentId), where('status', '==', 'PENDING'));
+          const itSnap = await getDocs(itQuery);
+          for (const itDoc of itSnap.docs) {
+            await updateDoc(doc(db, 'itInfraPenalties', itDoc.id), { status: 'PAID', updatedAt: new Date().toISOString() });
+          }
+        }
       }
       
       await updateDoc(crRef, crUpdateData);
+      
+      // Send final completion email to student
+      if (newStatus === 'APPROVED' && isLast) {
+        try {
+          const studentDashboardUrl = `${window.location.origin}/login`;
+          const htmlMessage = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f9fafb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+              <div style="background: linear-gradient(135deg, #16a34a, #15803d); padding: 30px 20px; text-align: center;">
+                <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Clearance Application Completed!</h1>
+              </div>
+              <div style="padding: 30px; background-color: white;">
+                <p style="color: #334155; font-size: 16px; margin-bottom: 20px;">Dear <strong>${selectedClearance.student?.name}</strong>,</p>
+                <p style="color: #334155; font-size: 16px; margin-bottom: 25px; line-height: 1.6;">
+                  Congratulations! Your clearance application has been fully approved by all departments. You are now officially cleared.
+                </p>
+                
+                <div style="text-align: center; margin: 35px 0;">
+                  <a href="${studentDashboardUrl}" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2);">Download NDC Certification</a>
+                </div>
+              </div>
+              <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+                <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                  RGUKT Clearance Hub &copy; ${new Date().getFullYear()}<br>
+                  This is an automated message, please do not reply.
+                </p>
+              </div>
+            </div>
+          `;
+
+          await emailjs.send(
+            EMAILJS_SERVICE_ID,
+            EMAILJS_TEMPLATE_ID,
+            {
+              to_name: selectedClearance.student?.name || 'Student',
+              to_email: selectedClearance.student?.email,
+              html_message: htmlMessage
+            },
+            EMAILJS_PUBLIC_KEY
+          );
+          console.log('Final completion email sent to student!');
+        } catch (emailErr) {
+          console.error('Failed to send final completion EmailJS notification:', emailErr);
+        }
+      }
       
       setIsConfirming(false);
       setIsConfirmed(true);
@@ -296,8 +848,10 @@ export default function DepartmentDashboard() {
         setActionType(null);
         setRemarks('');
         setFeeAmount('');
+        setMaintenanceFee('');
         setReferenceId('');
         setFetchedFee(null);
+        setScholarshipRecords({});
         setIsConfirmed(false);
         fetchClearances(departmentName);
       }, 1000);
@@ -314,12 +868,60 @@ export default function DepartmentDashboard() {
     setIsFetchingFee(true);
     setFetchedFee(null);
     setFetchedPenalties(null);
+    setFetchedAllDeptDues(null);
     setIsDuesAdded(false);
     setIsAddingDues(false);
     setShowToast(false);
     try {
-      if (departmentName === 'Hostel') {
+      if (departmentName === 'FO') {
+        // Finance Officer (FO): Fetch itemized dues across ALL university departments
+        let reqData: any = null;
+        if (selectedClearance.requestId) {
+          try {
+            const rSnap = await getDoc(doc(db, 'clearanceRequests', selectedClearance.requestId));
+            if (rSnap.exists()) {
+              reqData = { id: rSnap.id, ...rSnap.data() };
+            }
+          } catch (e) {
+            console.warn('Could not load clearance request document:', e);
+          }
+        }
+        const { groups, grandTotal: total } = await fetchDetailedStudentDues(
+          selectedClearance.student.studentId,
+          reqData || selectedClearance
+        );
+        setFetchedAllDeptDues(groups);
+        setFetchedFee(total);
+      } else if (departmentName === 'Boys Hostel' || departmentName === 'Girls Hostel') {
         const q = query(collection(db, 'hostelPenalties'), where('studentId', '==', selectedClearance.student.studentId), where('status', '==', 'PENDING'));
+        const snap = await getDocs(q);
+        const penalties = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const total = penalties.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+        setFetchedPenalties(penalties);
+        setFetchedFee(total);
+      } else if (departmentName === 'DSW') {
+        const q = query(collection(db, 'dswPenalties'), where('studentId', '==', selectedClearance.student.studentId), where('status', '==', 'PENDING'));
+        const snap = await getDocs(q);
+        const penalties = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const total = penalties.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+        setFetchedPenalties(penalties);
+        setFetchedFee(total);
+      } else if (isLabDept) {
+        const q = query(collection(db, 'labPenalties'), where('studentId', '==', selectedClearance.student.studentId), where('department', '==', departmentName), where('status', '==', 'PENDING'));
+        const snap = await getDocs(q);
+        const penalties = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const total = penalties.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+        setFetchedPenalties(penalties);
+        setFetchedFee(total);
+      } else if (departmentName === 'Library') {
+        const q = query(collection(db, 'libraryPenalties'), where('studentId', '==', selectedClearance.student.studentId), where('status', '==', 'PENDING'));
+        const snap = await getDocs(q);
+        const penalties = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const total = penalties.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+        setFetchedPenalties(penalties);
+        setFetchedFee(total);
+      } else if (departmentName === 'IT Infra') {
+        const q = query(collection(db, 'itInfraPenalties'), where('studentId', '==', selectedClearance.student.studentId), where('status', '==', 'PENDING'));
         const snap = await getDocs(q);
         const penalties = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const total = penalties.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
@@ -330,7 +932,15 @@ export default function DepartmentDashboard() {
         const feeSnap = await getDoc(feeDocRef);
         if (feeSnap.exists()) {
           const data = feeSnap.data();
-          setFetchedFee(data.pendingFee || 0);
+          if (data.department && data.department !== departmentName) {
+            setFetchedFee(0);
+          } else if (data.departments && typeof data.departments === 'object') {
+            setFetchedFee(Number(data.departments[departmentName]) || 0);
+          } else if (data.pendingFee !== undefined && (!data.department || data.department === departmentName)) {
+            setFetchedFee(Number(data.pendingFee) || 0);
+          } else {
+            setFetchedFee(0);
+          }
         } else {
           setFetchedFee(0);
         }
@@ -343,8 +953,30 @@ export default function DepartmentDashboard() {
     }
   };
 
+  const handleDownloadFoDuesPdf = async () => {
+    if (!selectedClearance || !fetchedAllDeptDues) return;
+    try {
+      const blob = await generateDuesPdfBlob(
+        '',
+        {
+          name: selectedClearance.student?.name || selectedClearance.student?.studentId,
+          studentId: selectedClearance.student?.studentId,
+          program: selectedClearance.programType || selectedClearance.student?.program || 'PUC',
+          department: selectedClearance.department || selectedClearance.student?.department,
+          hostel: selectedClearance.presentHostel || selectedClearance.student?.hostel
+        },
+        fetchedAllDeptDues,
+        fetchedFee || 0
+      );
+      downloadPdfDirectly(blob, `${selectedClearance.student.studentId}_Official_RGUKT_Dues_Statement.pdf`);
+    } catch (err: any) {
+      alert('Error generating PDF report: ' + (err.message || err));
+    }
+  };
+
   const handleForward = async () => {
     if (!selectedClearance) return;
+    setIsForwarding(true);
     
     // Determine next department
     let nextDeptName: string | null = null;
@@ -352,35 +984,131 @@ export default function DepartmentDashboard() {
       // Get the master request to determine program and get FRESH fee due
       const crRef = doc(db, 'clearanceRequests', selectedClearance.requestId);
       const crSnap = await getDoc(crRef);
-      const programType = crSnap.exists() ? crSnap.data().programType : 'PUC';
-      const latestTotalFeeDue = crSnap.exists() ? (crSnap.data().totalFeeDue || 0) : 0;
+      const crData = crSnap.exists() ? crSnap.data() : {};
+      const programType = crData.programType || selectedClearance.programType || selectedClearance.student?.program || 'PUC';
+      const pucCourseType = crData.pucCourseType || selectedClearance.pucCourseType;
+      const courseType = crData.courseType || selectedClearance.courseType;
+      const latestTotalFeeDue = crSnap.exists() ? (crData.totalFeeDue || 0) : 0;
       
-      const currentSequence = programType === 'B.Tech' ? BTECH_DEPARTMENTS : PUC_DEPARTMENTS;
-      const currentIndex = currentSequence.indexOf(departmentName);
+      const currentSequence = getDepartmentSequence(programType, pucCourseType, courseType);
+      const seqDeptName = (departmentName === 'Boys Hostel' || departmentName === 'Girls Hostel') ? 'Hostel' : departmentName;
+      const currentIndex = currentSequence.indexOf(seqDeptName);
       nextDeptName = currentIndex >= 0 && currentIndex < currentSequence.length - 1 ? currentSequence[currentIndex + 1] : null;
       
       if (!nextDeptName) return;
+
+      // If student is MPC, ensure Biology Lab clearance is cleaned up if it was mistakenly created
+      const isMpc = pucCourseType === 'MPC' || (programType !== 'B.Tech' && courseType === 'MPC');
+      if (isMpc) {
+        try {
+          const bioQ = query(
+            collection(db, 'departmentClearances'), 
+            where('requestId', '==', selectedClearance.requestId), 
+            where('departmentName', '==', 'Biology Lab')
+          );
+          const bioSnap = await getDocs(bioQ);
+          for (const bDoc of bioSnap.docs) {
+            await deleteDoc(bDoc.ref);
+          }
+        } catch (cleanErr) {
+          console.error('Failed to clean up Biology Lab clearance:', cleanErr);
+        }
+      }
       
       // If we are forwarding to FO and there are dues, send an email to the student
       if (nextDeptName === 'FO' && latestTotalFeeDue > 0 && selectedClearance.student?.email) {
         try {
-          // Fetch all dues breakdown
-          const dcQuery = query(collection(db, 'departmentClearances'), where('requestId', '==', selectedClearance.requestId));
-          const dcSnap = await getDocs(dcQuery);
+          // Fetch detailed itemized dues breakdown divided by department
+          const { groups: duesGroups, grandTotal } = await fetchDetailedStudentDues(
+            selectedClearance.student.studentId,
+            { id: selectedClearance.requestId, ...crData }
+          );
           
           let duesHtml = '';
-          dcSnap.forEach(d => {
-            const data = d.data();
-            if (data.feeDue && data.feeDue > 0) {
+          if (duesGroups.length === 0) {
+            duesHtml = `<tr><td colspan="3" style="padding: 12px; text-align: center; color: #64748b;">No pending dues.</td></tr>`;
+          } else {
+            duesGroups.forEach(g => {
               duesHtml += `
-                <tr>
-                  <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155;"><strong>${data.departmentName}</strong></td>
-                  <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #64748b;">${data.remarks || 'Dues pending'}</td>
-                  <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #ef4444; font-weight: 600; text-align: right;">₹${data.feeDue}</td>
+                <tr style="background-color: #f8fafc;">
+                  <td colspan="3" style="padding: 10px 12px; border-bottom: 1px solid #cbd5e1; color: #1e293b; font-weight: bold; font-size: 13px;">
+                    📁 ${g.department.toUpperCase()} &nbsp;<span style="color: #64748b; font-weight: normal; font-size: 12px;">(Subtotal: ₹${g.subtotal.toLocaleString('en-IN')})</span>
+                  </td>
                 </tr>
               `;
+              g.items.forEach(item => {
+                duesHtml += `
+                  <tr>
+                    <td style="padding: 10px 12px 10px 24px; border-bottom: 1px solid #f1f5f9; color: #475569; font-size: 13px;">• ${g.department}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #1e293b; font-weight: 500; font-size: 13px;">${item.reason}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #dc2626; font-weight: 700; text-align: right; font-size: 13px;">₹${item.amount.toLocaleString('en-IN')}</td>
+                  </tr>
+                `;
+              });
+            });
+          }
+
+          let driveFileId: string | null = null;
+          try {
+            const pdfBlob = await generateDuesPdfBlob(
+              '',
+              {
+                name: selectedClearance.student.name,
+                studentId: selectedClearance.student.studentId,
+                program: programType,
+                department: selectedClearance.department || selectedClearance.student?.department,
+                hostel: selectedClearance.presentHostel || selectedClearance.student?.hostel
+              },
+              duesGroups,
+              grandTotal || latestTotalFeeDue
+            );
+            
+            try {
+              driveFileId = await uploadToGoogleDrive(pdfBlob, `${selectedClearance.student.studentId}_Official_Dues_Report.pdf`);
+              if (driveFileId) {
+                await updateDoc(doc(db, 'clearanceRequests', selectedClearance.requestId), { duesPdfFileId: driveFileId });
+              }
+            } catch (driveErr) {
+              console.warn("Google Drive sync optional/skipped:", driveErr);
             }
-          });
+          } catch (pdfErr) {
+            console.error("Failed to generate PDF for email:", pdfErr);
+          }
+
+          const baseUrl = window.location.origin.includes('localhost') 
+            ? 'https://rguktclearance.vercel.app' 
+            : window.location.origin;
+
+          const directDownloadUrl = `${baseUrl}/download-dues?reqId=${selectedClearance.requestId}&studentId=${selectedClearance.student.studentId}`;
+          const primaryDownloadUrl = driveFileId ? getDriveDownloadLink(driveFileId) : directDownloadUrl;
+
+          const pdfLinkHtml = `
+            <div style="margin-top: 26px; padding: 22px; background-color: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 12px; text-align: center;">
+              <div style="display: inline-block; padding: 4px 12px; background-color: #fee2e2; border-radius: 20px; font-size: 11px; font-weight: 700; color: #991b1b; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.5px;">
+                Official Statement Attached
+              </div>
+              <h4 style="margin: 0 0 6px 0; color: #0f172a; font-size: 16px; font-weight: 700;">Official Dues & Penalties Statement (PDF)</h4>
+              <p style="margin: 0 0 16px 0; color: #64748b; font-size: 13px; line-height: 1.5;">
+                An official university certificate statement has been generated with your itemized penalty particulars, department subtotals, and clearance verification.
+              </p>
+              <div>
+                <a href="${primaryDownloadUrl}" style="display: inline-block; background-color: #991b1b; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 10px rgba(153, 27, 27, 0.25);">
+                  ⬇ Download Official PDF Statement
+                </a>
+              </div>
+              ${driveFileId ? `
+                <div style="margin-top: 10px;">
+                  <a href="${getDrivePreviewLink(driveFileId)}" target="_blank" style="color: #2563eb; font-size: 12px; font-weight: 600; text-decoration: underline;">
+                    View on Google Drive
+                  </a>
+                </div>
+              ` : `
+                <p style="color: #94a3b8; font-size: 11px; margin: 10px 0 0 0;">
+                  (Click the button above to download your official PDF statement directly)
+                </p>
+              `}
+            </div>
+          `;
 
           const htmlMessage = `
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
@@ -428,6 +1156,7 @@ export default function DepartmentDashboard() {
                 <div style="text-align: center;">
                   <a href="https://rguktclearance.vercel.app/" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">Upload Receipt</a>
                 </div>
+                ${pdfLinkHtml}
               </div>
               <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
                 <p style="color: #94a3b8; font-size: 12px; margin: 0;">
@@ -493,33 +1222,36 @@ export default function DepartmentDashboard() {
       
       await updateDoc(doc(db, 'departmentClearances', selectedClearance.id), {
         forwarded: true,
+        forwardedTo: nextDeptName,
         updatedAt: new Date().toISOString()
       });
       
       // Wait for animation to finish before updating UI and closing
       setTimeout(() => {
-        setSelectedClearance((prev: any) => ({ ...prev, forwarded: true }));
+        setSelectedClearance((prev: any) => ({ ...prev, forwarded: true, forwardedTo: nextDeptName }));
         fetchClearances(departmentName);
         setForwardingAnim({ isAnimating: false, nextDept: null, progress: false, completed: false });
+        setIsForwarding(false);
       }, 5000);
 
     } catch (e) {
       console.error(e);
       setForwardingAnim({ isAnimating: false, nextDept: null, progress: false, completed: false });
+      setIsForwarding(false);
       alert('Failed to forward the request.');
     }
   };
 
   const logout = () => {
     localStorage.removeItem('user');
-    navigate('/login');
+    navigate('/login', { replace: true });
   };
 
   return (
     <div className="flex min-h-screen text-on-background font-body-md antialiased">
       
       {/* SideNavBar Component */}
-      <aside className="bg-primary-container h-full w-64 fixed left-0 top-0 rounded-r-3xl border-r border-outline-variant/10 shadow-xl flex flex-col py-8 z-50">
+      <aside className="bg-primary-container h-full w-64 fixed left-0 top-0 rounded-r-3xl border-r border-outline-variant/10 shadow-xl flex flex-col py-8 z-50 transition-transform duration-300 hover:scale-[1.03] origin-left">
         <div className="px-6 mb-8 flex flex-col items-center">
           <div className="w-24 h-24 mb-4 flex items-center justify-center">
             <img src="/logo.png" alt="RGUKT Logo" className="w-full h-full object-contain" />
@@ -537,13 +1269,63 @@ export default function DepartmentDashboard() {
             Requests
           </button>
           
-          {departmentName === 'Hostel' && (
+          {isHostelWarden && (
             <button 
               onClick={() => setCurrentTab('hostelPenalty')}
               className={`w-full flex items-center gap-3 px-4 py-3 font-label-md transition-all duration-300 rounded-lg ${currentTab === 'hostelPenalty' ? 'text-surface-container-lowest border-l-2 border-secondary-container bg-surface-variant/10 rounded-l-none rounded-r-lg' : 'text-on-primary-container/70 hover:bg-surface-variant/20 hover:text-surface-container-lowest'}`}
             >
               <AlertCircle className="w-5 h-5" />
               Hostel Penalty
+            </button>
+          )}
+
+          {departmentName === 'DSW' && (
+            <button 
+              onClick={() => setCurrentTab('dswPenalty')}
+              className={`w-full flex items-center gap-3 px-4 py-3 font-label-md transition-all duration-300 rounded-lg ${currentTab === 'dswPenalty' ? 'text-surface-container-lowest border-l-2 border-secondary-container bg-surface-variant/10 rounded-l-none rounded-r-lg' : 'text-on-primary-container/70 hover:bg-surface-variant/20 hover:text-surface-container-lowest'}`}
+            >
+              <AlertCircle className="w-5 h-5" />
+              DSW Penalty
+            </button>
+          )}
+
+          {isLabDept && (
+            <button 
+              onClick={() => setCurrentTab('labPenalty')}
+              className={`w-full flex items-center gap-3 px-4 py-3 font-label-md transition-all duration-300 rounded-lg ${currentTab === 'labPenalty' ? 'text-surface-container-lowest border-l-2 border-secondary-container bg-surface-variant/10 rounded-l-none rounded-r-lg' : 'text-on-primary-container/70 hover:bg-surface-variant/20 hover:text-surface-container-lowest'}`}
+            >
+              <AlertCircle className="w-5 h-5" />
+              Lab Penalty
+            </button>
+          )}
+
+          {departmentName === 'Library' && (
+            <button 
+              onClick={() => setCurrentTab('libraryPenalty')}
+              className={`w-full flex items-center gap-3 px-4 py-3 font-label-md transition-all duration-300 rounded-lg ${currentTab === 'libraryPenalty' ? 'text-surface-container-lowest border-l-2 border-secondary-container bg-surface-variant/10 rounded-l-none rounded-r-lg' : 'text-on-primary-container/70 hover:bg-surface-variant/20 hover:text-surface-container-lowest'}`}
+            >
+              <AlertCircle className="w-5 h-5" />
+              Library Penalty
+            </button>
+          )}
+
+          {departmentName === 'IT Infra' && (
+            <button 
+              onClick={() => setCurrentTab('itInfraPenalty')}
+              className={`w-full flex items-center gap-3 px-4 py-3 font-label-md transition-all duration-300 rounded-lg ${currentTab === 'itInfraPenalty' ? 'text-surface-container-lowest border-l-2 border-secondary-container bg-surface-variant/10 rounded-l-none rounded-r-lg' : 'text-on-primary-container/70 hover:bg-surface-variant/20 hover:text-surface-container-lowest'}`}
+            >
+              <AlertCircle className="w-5 h-5" />
+              IT Infra Penalty
+            </button>
+          )}
+
+          {isHostelWarden && (
+            <button 
+              onClick={() => setCurrentTab('profile')}
+              className={`w-full flex items-center gap-3 px-4 py-3 font-label-md transition-all duration-300 rounded-lg ${currentTab === 'profile' ? 'text-surface-container-lowest border-l-2 border-secondary-container bg-surface-variant/10 rounded-l-none rounded-r-lg' : 'text-on-primary-container/70 hover:bg-surface-variant/20 hover:text-surface-container-lowest'}`}
+            >
+              <Settings className="w-5 h-5" />
+              Warden Profile
             </button>
           )}
 
@@ -606,7 +1388,7 @@ export default function DepartmentDashboard() {
                     ) : (
                       incomingRequests.map((req, idx) => (
                         <div key={idx} className="p-3 border-b border-outline-variant/10 hover:bg-surface-variant/30 cursor-pointer flex flex-col gap-1 transition-colors" onClick={() => {
-                          setSelectedClearance(req);
+                          handleSelectClearance(req);
                           setIncomingRequests(curr => curr.filter(c => c.id !== req.id));
                           setShowNotifications(false);
                         }}>
@@ -631,16 +1413,116 @@ export default function DepartmentDashboard() {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-8 max-w-[1440px] mx-auto w-full">
-          {currentTab === 'hostelPenalty' ? (
-            <HostelPenaltyManager />
+        <main className="flex-1 p-8 max-w-[1440px] mx-auto w-full outline-none" tabIndex={-1}>
+          {currentTab === 'profile' ? (
+            <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-surface-variant p-8 max-w-2xl animate-in fade-in zoom-in duration-300">
+              <h2 className="font-headline-lg text-2xl font-bold text-primary mb-2">Warden Profile</h2>
+              <p className="font-body-md text-on-surface-variant mb-8">Update your display name to appear on student approvals.</p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-on-surface-variant mb-2">Warden Display Name</label>
+                  <input 
+                    type="text" 
+                    value={wardenName}
+                    onChange={(e) => setWardenName(e.target.value)}
+                    placeholder="e.g. John Doe - BH1"
+                    className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-xl focus:border-secondary focus:ring-1 focus:ring-secondary outline-none transition-all"
+                  />
+                </div>
+                <button 
+                  disabled={isSavingProfile}
+                  onClick={async () => {
+                    setIsSavingProfile(true);
+                    try {
+                      const userStr = localStorage.getItem('user');
+                      if (userStr) {
+                        const user = JSON.parse(userStr);
+                        user.wardenName = wardenName;
+                        localStorage.setItem('user', JSON.stringify(user));
+                        
+                        const userRef = doc(db, 'users', user.uid || user.id);
+                        await updateDoc(userRef, { wardenName });
+                        alert("Profile updated successfully!");
+                      }
+                    } catch(err) {
+                      console.error(err);
+                      alert("Failed to update profile.");
+                    } finally {
+                      setIsSavingProfile(false);
+                    }
+                  }}
+                  className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  {isSavingProfile ? 'Saving...' : 'Save Profile'}
+                </button>
+              </div>
+            </div>
+          ) : currentTab === 'labPenalty' ? (
+            <HostelPenaltyManager type="lab" departmentName={departmentName} />
+          ) : currentTab === 'libraryPenalty' ? (
+            <HostelPenaltyManager type="library" />
+          ) : currentTab === 'itInfraPenalty' ? (
+            <HostelPenaltyManager type="itInfra" />
+          ) : currentTab === 'dswPenalty' ? (
+            <HostelPenaltyManager type="dsw" />
+          ) : currentTab === 'hostelPenalty' ? (
+            <HostelPenaltyManager type="hostel" />
+          ) : isHostelWarden && !selectedHostelView ? (
+            <>
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h2 className="font-headline-lg text-3xl font-bold text-primary">Hostels</h2>
+                  <p className="font-body-md text-on-surface-variant mt-1">Select a hostel to view its pending clearance requests.</p>
+                </div>
+              </div>
+              {loading ? (
+                <div className="flex flex-col items-center justify-center space-y-3 py-12">
+                  <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin"></div>
+                  <p className="text-on-surface-variant font-medium animate-pulse">Loading hostels data...</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10 pb-4 border-none ring-0 focus:outline-none outline-none">
+                  {(departmentName === 'Boys Hostel' ? BOYS_HOSTELS : departmentName === 'Girls Hostel' ? GIRLS_HOSTELS : ALL_HOSTELS).map(hostel => {
+                    const normalizeHostelName = (name: string) => name?.replace(/\s+/g, '').toLowerCase();
+                    const reqCount = clearances.filter(c => normalizeHostelName(c.presentHostel) === normalizeHostelName(hostel)).length;
+                    
+                    return (
+                      <div 
+                        key={hostel}
+                        onClick={() => setSelectedHostelView(hostel)}
+                        className="bg-surface-container-lowest border border-surface-variant rounded-2xl p-6 cursor-pointer hover:shadow-md hover:border-blue-300 transition-all group"
+                      >
+                        <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                          <Building2 className="w-6 h-6" />
+                        </div>
+                        <h3 className="font-headline-sm text-lg font-bold text-primary mb-2">{hostel}</h3>
+                        <p className="text-on-surface-variant text-sm font-medium">
+                          {reqCount} active request{reqCount !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           ) : (
             <>
               <div className="flex items-center justify-between mb-8">
                 <div>
-                  <h2 className="font-headline-lg text-3xl font-bold text-primary">Clearance Requests</h2>
-                  <p className="font-body-md text-on-surface-variant mt-1">Manage and process student clearance requests for your department.</p>
+                  <h2 className="font-headline-lg text-3xl font-bold text-primary">
+                    {selectedHostelView ? `${selectedHostelView} Requests` : 'Clearance Requests'}
+                  </h2>
+                  <p className="font-body-md text-on-surface-variant mt-1">Manage and process student clearance requests.</p>
                 </div>
+                {selectedHostelView && (
+                  <button 
+                    onClick={() => setSelectedHostelView(null)}
+                    className="px-4 py-2 bg-surface-variant text-on-surface-variant rounded-lg font-semibold hover:bg-outline-variant/30 transition-colors"
+                  >
+                    &larr; Back to Hostels
+                  </button>
+                )}
               </div>
 
               <div className="bg-surface-container-lowest rounded-2xl shadow-[0_4px_20px_-2px_rgba(10,25,47,0.05)] border border-surface-variant overflow-hidden">
@@ -664,17 +1546,25 @@ export default function DepartmentDashboard() {
                       </div>
                     </td>
                   </tr>
-                ) : clearances.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-on-surface-variant">
-                      No clearance requests found for your department.
-                    </td>
-                  </tr>
-                ) : clearances.map(c => (
-                  <tr key={c.id} className="hover:bg-surface-variant/20 transition-colors">
+                ) : (() => {
+                  const normalizeHostelName = (name: string) => name?.replace(/\s+/g, '').toLowerCase();
+                  const filteredClearances = selectedHostelView ? clearances.filter(c => normalizeHostelName(c.presentHostel) === normalizeHostelName(selectedHostelView)) : clearances;
+                  if (filteredClearances.length === 0) {
+                    return (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-12 text-center text-on-surface-variant">
+                          No clearance requests found for your department.
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return filteredClearances.map(c => (
+                    <tr key={c.id} className="hover:bg-surface-variant/20 transition-colors">
                     <td className="px-6 py-4 font-semibold text-primary">{c.student?.studentId || 'N/A'}</td>
                     <td className="px-6 py-4 font-medium">{formatName(c.student?.name, c.student?.studentId)}</td>
-                    <td className="px-6 py-4 text-on-surface-variant">{c.student?.program}</td>
+                    <td className="px-6 py-4 text-on-surface-variant">
+                      {c.programType || c.student?.program} {c.courseType ? `(${c.courseType})` : ''}{c.programType === 'B.Tech' && c.pucCourseType ? ` - ${c.pucCourseType}` : ''}
+                    </td>
                     <td className="px-6 py-4">
                       {c.status === 'APPROVED' && (
                         <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-green-100 text-green-800 font-label-sm text-xs font-semibold">
@@ -694,14 +1584,15 @@ export default function DepartmentDashboard() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button 
-                        onClick={() => setSelectedClearance(c)}
+                        onClick={() => handleSelectClearance(c)}
                         className="inline-flex items-center gap-2 px-4 py-2 border border-outline text-primary rounded-lg font-label-sm text-xs font-semibold hover:bg-surface-variant/50 transition-colors"
                       >
                         <ShieldCheck className="w-4 h-4" /> Review
                       </button>
                     </td>
                   </tr>
-                ))}
+                ));
+              })()}
               </tbody>
             </table>
           </div>
@@ -713,7 +1604,7 @@ export default function DepartmentDashboard() {
       {/* Review Modal */}
       {selectedClearance && (
         <div className="fixed inset-0 bg-primary/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-          <div className="bg-surface-container-lowest rounded-2xl p-8 max-w-7xl w-[90vw] max-h-[90vh] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] flex flex-col shadow-2xl border border-surface-variant animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-surface-container-lowest rounded-2xl p-6 sm:p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] flex flex-col shadow-2xl border border-surface-variant animate-in fade-in zoom-in-95 duration-200">
             <div className="flex justify-between items-start mb-6">
               <div>
                 <h3 className="font-headline-md text-2xl font-bold text-primary mb-1">Review Clearance</h3>
@@ -731,7 +1622,9 @@ export default function DepartmentDashboard() {
                 </div>
                 <div>
                   <h4 className="font-headline-sm text-xl font-bold text-on-surface">{formatName(selectedClearance.student?.name, selectedClearance.student?.studentId)}</h4>
-                  <p className="font-body-md text-on-surface-variant mt-0.5">{selectedClearance.student?.studentId} • {selectedClearance.student?.program}</p>
+                  <p className="font-body-md text-on-surface-variant mt-0.5">
+                    {selectedClearance.student?.studentId} • {selectedClearance.programType || selectedClearance.student?.program} {selectedClearance.courseType ? `(${selectedClearance.courseType})` : ''}{selectedClearance.programType === 'B.Tech' && selectedClearance.pucCourseType ? ` - ${selectedClearance.pucCourseType}` : ''}
+                  </p>
                 </div>
               </div>
               <div className="sm:text-right">
@@ -748,7 +1641,7 @@ export default function DepartmentDashboard() {
                   <span className="font-bold text-primary">{selectedClearance.student.scholarshipId}</span>
                 </div>
               )}
-              {departmentName === 'Hostel' && selectedClearance.presentHostel && (
+              {isHostelWarden && selectedClearance.presentHostel && (
                 <div className="flex justify-between pb-3 border-b border-surface-variant/50">
                   <span className="text-on-surface-variant font-label-md">Present Hostel:</span>
                   <span className="font-bold text-primary">{selectedClearance.presentHostel}</span>
@@ -762,41 +1655,181 @@ export default function DepartmentDashboard() {
 
             {selectedClearance.status === 'PENDING' && (
               <div className="space-y-6">
-                {['Hostel', 'Physics Lab', 'Chemistry Lab', 'Biology Lab', 'Library', 'IT Infra', 'Scholarship Office', 'Sports', 'FO'].includes(departmentName) && (
-                  <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/30 shadow-sm flex flex-col gap-4">
-                    <div className="flex justify-between items-center">
+                {/* DSW Maintenance Fee Section */}
+                {departmentName === 'DSW' && (
+                  <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/30 shadow-sm space-y-3">
+                    <div className="flex justify-between items-start">
                       <div>
-                        <h5 className="font-headline-sm text-lg font-bold text-on-surface mb-1">Outstanding Dues Check</h5>
-                        <p className="text-sm text-on-surface-variant">Search the database to see if this student has any pending maintenance fees.</p>
+                        <h5 className="font-headline-sm text-base font-bold text-on-surface mb-0.5">Maintenance Fee</h5>
+                        <p className="text-xs text-on-surface-variant">Enter campus/welfare maintenance fee to be added to the student's total clearance fee.</p>
+                      </div>
+                      {(parseFloat(maintenanceFee) || 0) > 0 && (
+                        <span className="text-xs bg-blue-100 text-blue-800 font-bold px-3 py-1 rounded-full border border-blue-300 animate-in fade-in">
+                          + ₹{parseFloat(maintenanceFee)} Added
+                        </span>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold text-sm">₹</span>
+                      <input 
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={maintenanceFee}
+                        onChange={(e) => {
+                          setMaintenanceFee(e.target.value);
+                          if (parseFloat(e.target.value) > 0) {
+                            setActionType('APPROVE');
+                          }
+                        }}
+                        placeholder="Enter maintenance fee amount (e.g. 500)"
+                        className="w-full pl-8 pr-4 py-2.5 bg-white border border-outline-variant/50 rounded-xl text-sm font-semibold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary shadow-sm transition-all"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {['Boys Hostel', 'Girls Hostel', 'DSW', 'Physics Lab', 'Chemistry Lab', 'Biology Lab', 'Library', 'IT Infra', 'FO'].includes(departmentName) && (
+                  <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/30 shadow-sm flex flex-col gap-4">
+                    <div className="flex justify-between items-center gap-4">
+                      <div className="flex-1 min-w-0">
+                        <h5 className="font-headline-sm text-base font-bold text-on-surface mb-0.5">Outstanding Dues Check</h5>
+                        <p className="text-xs text-on-surface-variant">
+                          {departmentName === 'FO'
+                            ? 'Search and audit all outstanding dues across all campus departments for this student.'
+                            : 'Search the database to see if this student has any pending maintenance fees.'}
+                        </p>
                       </div>
                       <button
                         onClick={handleFetchMaintenanceFee}
-                        disabled={isFetchingFee}
-                        className="bg-primary text-on-primary hover:bg-primary-fixed hover:text-on-primary-fixed px-5 py-2.5 rounded-xl font-label-md font-semibold transition-colors disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                        disabled={isFetchingFee || fetchedFee !== null}
+                        className={`whitespace-nowrap shrink-0 px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50 ${
+                          fetchedFee !== null
+                            ? 'bg-green-100 text-green-800 border border-green-300 hover:bg-green-200'
+                            : 'bg-primary text-on-primary hover:bg-primary/90'
+                        }`}
                       >
-                        {isFetchingFee ? 'Checking...' : 'Check Dues'}
+                        {isFetchingFee ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                            Checking...
+                          </>
+                        ) : fetchedFee !== null ? (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                            Checked
+                          </>
+                        ) : (
+                          'Check Dues'
+                        )}
                       </button>
                     </div>
                     
                     {fetchedFee !== null && (
-                      <div className={`p-5 rounded-xl border flex flex-col sm:flex-row sm:justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-500 transition-colors ${fetchedFee > 0 ? (isDuesAdded ? 'bg-green-50/50 border-green-200' : 'bg-error-container/30 border-error-container/50') : 'bg-surface-variant/30 border-outline-variant/30'}`}>
+                      <div className={`p-5 rounded-xl border flex flex-col gap-4 animate-in fade-in slide-in-from-top-2 duration-500 transition-colors ${fetchedFee > 0 ? (isDuesAdded ? 'bg-green-50/50 border-green-200' : 'bg-error-container/30 border-error-container/50') : 'bg-green-50/70 border-green-200'}`}>
                         <div className="flex-1">
-                          <span className={`text-xs font-bold uppercase tracking-wider mb-2 block transition-colors ${fetchedFee > 0 ? (isDuesAdded ? 'text-green-700' : 'text-error') : 'text-primary'}`}>
-                            {isDuesAdded ? 'Dues Added' : 'Search Result'}
+                          <span className={`text-xs font-bold uppercase tracking-wider mb-2 block transition-colors ${fetchedFee > 0 ? (isDuesAdded ? 'text-green-700' : 'text-error') : 'text-green-700'}`}>
+                            {isDuesAdded ? 'Dues Added' : (departmentName === 'FO' ? 'All Departments Dues Audit' : 'Search Result')}
                           </span>
                           
-                          {departmentName === 'Hostel' && fetchedPenalties && fetchedPenalties.length > 0 ? (
-                            <div className="space-y-2 mb-3">
+                          {/* FO View: All Dues from ALL Departments */}
+                          {departmentName === 'FO' && fetchedAllDeptDues && fetchedAllDeptDues.length > 0 ? (
+                            <div className="space-y-3 mb-3">
+                              {fetchedAllDeptDues.map((g, gIdx) => (
+                                <div key={gIdx} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+                                  <div className="bg-slate-100/80 px-3.5 py-2 flex justify-between items-center border-b border-slate-200">
+                                    <span className="font-bold text-xs text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                                      <Building2 className="w-3.5 h-3.5 text-primary" />
+                                      {g.department}
+                                    </span>
+                                    <span className="font-bold text-xs text-slate-900">Subtotal: ₹{g.subtotal.toLocaleString('en-IN')}</span>
+                                  </div>
+                                  <div className="p-2 space-y-1.5">
+                                    {g.items.map((item, iIdx) => (
+                                      <div key={iIdx} className="flex justify-between items-center text-xs px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-100">
+                                        <span className="text-slate-700 font-medium">{item.reason}</span>
+                                        <span className="font-bold text-red-600">₹{item.amount.toLocaleString('en-IN')}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+
+                              {/* Grand Total Bar & Actions - Compact Single Line */}
+                              <div className={`flex items-center justify-between gap-3 px-3.5 py-2 border mt-2 rounded-xl shadow-xs transition-colors ${isDuesAdded ? 'border-green-300 bg-green-100/60' : 'border-error-container bg-error-container/40'}`}>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className={`font-bold text-xs sm:text-sm whitespace-nowrap ${isDuesAdded ? 'text-green-900' : 'text-on-error-container'}`}>
+                                    Total Dues:
+                                  </span>
+                                  <span className={`font-extrabold text-sm sm:text-base whitespace-nowrap transition-colors ${isDuesAdded ? 'text-green-700' : 'text-error'}`}>
+                                    ₹{fetchedFee.toLocaleString('en-IN')}
+                                  </span>
+                                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-white/70 border border-slate-200 text-slate-600 whitespace-nowrap hidden sm:inline">
+                                    All Depts
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={handleDownloadFoDuesPdf}
+                                    className="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold whitespace-nowrap transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer shrink-0"
+                                    title="Download Official Statement PDF"
+                                  >
+                                    <FileText className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                                    <span className="whitespace-nowrap">Statement PDF</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isDuesAdded || isAddingDues}
+                                    onClick={() => {
+                                      setIsAddingDues(true);
+                                      setTimeout(() => {
+                                        setIsAddingDues(false);
+                                        setIsDuesAdded(true);
+                                        setShowToast(true);
+                                        setFeeAmount(fetchedFee.toString());
+                                        setActionType('APPROVE');
+                                        setTimeout(() => setShowToast(false), 3000);
+                                      }, 800);
+                                    }}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                                      isDuesAdded 
+                                        ? 'bg-green-600 text-white shadow-green-600/20' 
+                                        : isAddingDues 
+                                        ? 'bg-error/70 text-on-error cursor-wait' 
+                                        : 'bg-error hover:bg-red-700 text-on-error'
+                                    }`}
+                                  >
+                                    {isDuesAdded ? (
+                                      <>
+                                        <CheckCircle2 className="w-3.5 h-3.5 animate-in zoom-in shrink-0" />
+                                        <span>Added</span>
+                                      </>
+                                    ) : isAddingDues ? (
+                                      <>
+                                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0"></div>
+                                        <span>Adding...</span>
+                                      </>
+                                    ) : (
+                                      <span>Add Total</span>
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (isHostelWarden || departmentName === 'DSW' || isLabDept || departmentName === 'Library' || departmentName === 'IT Infra') && fetchedPenalties && fetchedPenalties.length > 0 ? (
+                            <div className="space-y-1.5 mb-3">
                               {fetchedPenalties.map((p, idx) => (
-                                <div key={p.id || idx} className={`flex justify-between items-center text-sm px-3 py-2 rounded-lg border shadow-sm transition-colors ${isDuesAdded ? 'bg-green-100/50 border-green-200/50' : 'bg-surface-container-lowest/80 border-outline-variant/20'}`}>
+                                <div key={p.id || idx} className={`flex justify-between items-center text-xs px-2.5 py-1.5 rounded-lg border shadow-sm transition-colors ${isDuesAdded ? 'bg-green-100/50 border-green-200/50' : 'bg-surface-container-lowest/80 border-outline-variant/20'}`}>
                                   <span className={isDuesAdded ? 'text-green-900 font-medium' : 'text-on-surface font-medium'}>{p.reason}</span>
                                   <span className={`font-bold transition-colors ${isDuesAdded ? 'text-green-700' : 'text-error'}`}>₹{p.amount}</span>
                                 </div>
                               ))}
-                              <div className={`flex justify-between items-center px-4 py-3 border mt-2 rounded-xl shadow-sm transition-colors ${isDuesAdded ? 'border-green-300 bg-green-200/50' : 'border-error-container bg-error-container/50'}`}>
-                                <span className={`font-bold ${isDuesAdded ? 'text-green-900' : 'text-on-error-container'}`}>Total Dues:</span>
-                                <div className="flex items-center gap-4">
-                                  <span className={`font-bold text-lg transition-colors ${isDuesAdded ? 'text-green-700' : 'text-error'}`}>₹{fetchedFee}</span>
+                              <div className={`flex justify-between items-center px-3 py-2 border mt-1.5 rounded-xl shadow-sm transition-colors ${isDuesAdded ? 'border-green-300 bg-green-200/50' : 'border-error-container bg-error-container/50'}`}>
+                                <span className={`font-bold text-sm ${isDuesAdded ? 'text-green-900' : 'text-on-error-container'}`}>Total Dues:</span>
+                                <div className="flex items-center gap-3">
+                                  <span className={`font-bold text-base transition-colors ${isDuesAdded ? 'text-green-700' : 'text-error'}`}>₹{fetchedFee}</span>
                                   <button
                                     disabled={isDuesAdded || isAddingDues}
                                     onClick={() => {
@@ -810,17 +1843,53 @@ export default function DepartmentDashboard() {
                                         setTimeout(() => setShowToast(false), 3000);
                                       }, 800);
                                     }}
-                                    className={`px-4 py-2 rounded-lg font-label-sm font-bold transition-all duration-500 shadow-sm flex items-center gap-2 ${isDuesAdded ? 'bg-green-600 text-white' : isAddingDues ? 'bg-error/70 text-on-error cursor-wait' : 'bg-error hover:bg-red-700 text-on-error'}`}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-500 shadow-sm flex items-center gap-1.5 ${isDuesAdded ? 'bg-green-600 text-white' : isAddingDues ? 'bg-error/70 text-on-error cursor-wait' : 'bg-error hover:bg-red-700 text-on-error'}`}
                                   >
-                                    {isDuesAdded ? <><CheckCircle2 className="w-4 h-4 animate-in zoom-in" /> Added</> : isAddingDues ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Adding...</> : 'Add All'}
+                                    {isDuesAdded ? <><CheckCircle2 className="w-3.5 h-3.5 animate-in zoom-in" /> Added</> : isAddingDues ? <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Adding...</> : 'Add All'}
                                   </button>
                                 </div>
                               </div>
                             </div>
+                          ) : fetchedFee > 0 ? (
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                              <div>
+                                <span className={`font-headline-sm text-xl font-bold transition-colors ${isDuesAdded ? 'text-green-800' : 'text-on-error-container'}`}>
+                                  ₹{fetchedFee} Pending Dues
+                                </span>
+                                <p className="text-xs text-on-surface-variant mt-0.5">Found outstanding maintenance dues for this student.</p>
+                              </div>
+                              <button
+                                disabled={isDuesAdded || isAddingDues}
+                                onClick={() => {
+                                  setIsAddingDues(true);
+                                  setTimeout(() => {
+                                    setIsAddingDues(false);
+                                    setIsDuesAdded(true);
+                                    setShowToast(true);
+                                    setFeeAmount(fetchedFee.toString());
+                                    setActionType('APPROVE');
+                                    setTimeout(() => setShowToast(false), 3000);
+                                  }, 800);
+                                }}
+                                className={`px-4 py-2 rounded-lg font-label-sm font-bold transition-all duration-500 shadow-sm flex items-center gap-2 self-start sm:self-auto ${isDuesAdded ? 'bg-green-600 text-white' : isAddingDues ? 'bg-error/70 text-on-error cursor-wait' : 'bg-error hover:bg-red-700 text-on-error'}`}
+                              >
+                                {isDuesAdded ? <><CheckCircle2 className="w-4 h-4 animate-in zoom-in" /> Added</> : isAddingDues ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Adding...</> : 'Add Due'}
+                              </button>
+                            </div>
                           ) : (
-                            <span className={`font-headline-sm text-xl font-bold transition-colors ${fetchedFee > 0 ? (isDuesAdded ? 'text-green-800' : 'text-on-error-container') : 'text-primary'}`}>
-                              {fetchedFee > 0 ? `₹${fetchedFee} Pending Dues` : 'No Pending Dues Found'}
-                            </span>
+                            <div className="flex items-center gap-3 py-1">
+                              <div className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center shrink-0">
+                                <CheckCircle2 className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <span className="font-headline-sm text-lg font-bold text-green-800 block">
+                                  {departmentName === 'FO' ? 'No Dues Across Any Department' : 'No Dues Available'}
+                                </span>
+                                <span className="text-xs text-green-700">
+                                  {departmentName === 'FO' ? 'Student has no pending dues or penalties across Hostel, Labs, Library, IT Infra, DSW, or Scholarship.' : 'Student has no pending dues or penalties.'}
+                                </span>
+                              </div>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -828,33 +1897,537 @@ export default function DepartmentDashboard() {
                   </div>
                 )}
                 
-                {!actionType && (
-                  <div className="flex gap-4">
-                    <button 
-                      onClick={() => setActionType('APPROVE')} 
-                      className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-label-md font-semibold transition-colors flex items-center justify-center gap-2"
-                    >
-                      <CheckCircle2 className="w-5 h-5" /> Approve
-                    </button>
-                    <button 
-                      onClick={() => setActionType('REJECT')} 
-                      className="flex-1 bg-error hover:bg-error-container hover:text-on-error-container text-white py-3 rounded-xl font-label-md font-semibold transition-colors flex items-center justify-center gap-2"
-                    >
-                      <AlertCircle className="w-5 h-5" /> Reject
-                    </button>
+                {/* Scholarship Office - Update Scholarship / Due Section */}
+                {departmentName === 'Scholarship Office' && (
+                  <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/30 shadow-sm space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-outline-variant/20">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 flex items-center justify-center shrink-0">
+                          <Award className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h5 className="font-headline-sm text-base font-bold text-on-surface">Update Scholarship / Due</h5>
+                            <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                              scholarshipProgramType === 'B.Tech' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                            }`}>
+                              {scholarshipProgramType === 'B.Tech' ? 'Course: B.Tech (PUC + 4 Years)' : 'Course: PUC (2 Years)'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-on-surface-variant mt-0.5">
+                            {scholarshipProgramType === 'B.Tech' 
+                              ? 'Single form displaying all 6 academic years (PUC + 4 Years B.Tech). Enter credited scholarship per year.'
+                              : 'Displaying PUC academic years (2 Years). Enter credited scholarship per year.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={() => setScholarshipProgramType('PUC')}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs border ${scholarshipProgramType === 'PUC' ? 'bg-blue-600 text-white border-blue-700' : 'bg-surface-variant/20 text-on-surface-variant hover:bg-surface-variant/30 border-outline-variant/30'}`}
+                        >
+                          PUC
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setScholarshipProgramType('B.Tech')}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs border ${scholarshipProgramType === 'B.Tech' ? 'bg-purple-600 text-white border-purple-700' : 'bg-surface-variant/20 text-on-surface-variant hover:bg-surface-variant/30 border-outline-variant/30'}`}
+                        >
+                          B.Tech
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleMarkAllFullCredited}
+                          className="px-3 py-1.5 text-xs font-bold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
+                          title="Set all years as fully credited with 0 due"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" /> All Full (₹0 Due)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleClearScholarship}
+                          className="px-3 py-1.5 text-xs font-medium text-on-surface-variant hover:text-on-surface bg-surface-variant/20 hover:bg-surface-variant/30 rounded-lg transition-colors"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      {/* Section 1: PUC Academic Years */}
+                      <div className="space-y-3">
+                        {scholarshipProgramType === 'B.Tech' && (
+                          <div className="flex items-center gap-2 pt-1">
+                            <span className="text-xs font-bold uppercase tracking-wider text-blue-800 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200">
+                              Part 1: PUC Academic Years (₹45,000 / Year)
+                            </span>
+                          </div>
+                        )}
+                        {activeScholarshipYears.filter(y => y.category === 'PUC').map((yr) => {
+                          const rec = scholarshipRecords[yr.id] || { credited: '', due: '' };
+                          const dueNum = parseFloat(rec.due) || 0;
+                          const isEntered = rec.credited !== '' || rec.due !== '';
+
+                          return (
+                            <div
+                              key={yr.id}
+                              className={`p-3.5 rounded-xl border transition-all ${
+                                dueNum > 0
+                                  ? 'bg-amber-50/40 border-amber-200 shadow-xs'
+                                  : isEntered
+                                  ? 'bg-green-50/40 border-green-200'
+                                  : 'bg-surface-container-lowest border-outline-variant/30'
+                              }`}
+                            >
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-sm text-primary">{yr.name}</span>
+                                  <span className="text-[11px] bg-blue-50 text-blue-700 font-semibold px-2 py-0.5 rounded border border-blue-100">
+                                    Total Scholarship: ₹{yr.totalGrant.toLocaleString()}
+                                  </span>
+                                </div>
+                                <div>
+                                  {isEntered ? (
+                                    dueNum > 0 ? (
+                                      <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                                        <AlertCircle className="w-3 h-3" /> Due: ₹{dueNum.toLocaleString()}
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs font-bold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                                        <CheckCircle2 className="w-3 h-3" /> Nil Due (Full Credited)
+                                      </span>
+                                    )
+                                  ) : (
+                                    <span className="text-xs text-on-surface-variant font-medium">Pending Entry</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {/* Field 1: Credited Amount */}
+                                <div>
+                                  <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1 flex justify-between">
+                                    <span>Field 1: Credited Amount</span>
+                                    <span className="text-blue-600 font-medium lowercase">received</span>
+                                  </label>
+                                  <div className="relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold text-xs">₹</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max={yr.totalGrant}
+                                      step="any"
+                                      value={rec.credited}
+                                      onChange={(e) => handleScholarshipCreditedChange(yr.id, e.target.value)}
+                                      placeholder="Enter credited (e.g. 35000)"
+                                      className="w-full pl-7 pr-3 py-2 bg-white border border-outline-variant/50 rounded-lg text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary shadow-xs transition-all"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Field 2: Due Amount (Auto-calculated) */}
+                                <div>
+                                  <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1 flex justify-between">
+                                    <span>Field 2: Due Amount</span>
+                                    <span className="text-amber-700 font-medium lowercase">remaining (auto)</span>
+                                  </label>
+                                  <div className="relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold text-xs">₹</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max={yr.totalGrant}
+                                      step="any"
+                                      value={rec.due}
+                                      onChange={(e) => handleScholarshipDueChange(yr.id, e.target.value)}
+                                      placeholder="Auto remaining (e.g. 10000)"
+                                      className={`w-full pl-7 pr-3 py-2 bg-white border rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-xs transition-all ${
+                                        dueNum > 0
+                                          ? 'border-red-300 text-red-600 bg-red-50/20 focus:border-red-500'
+                                          : isEntered
+                                          ? 'border-green-300 text-green-700 bg-green-50/20 focus:border-green-500'
+                                          : 'border-outline-variant/50 text-on-surface focus:border-primary'
+                                      }`}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Section 2: B.Tech Academic Years */}
+                      {scholarshipProgramType === 'B.Tech' && (
+                        <div className="space-y-3 pt-5 border-t border-outline-variant/30 mt-4">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold uppercase tracking-wider text-purple-800 bg-purple-50 px-2.5 py-1 rounded-md border border-purple-200">
+                              Part 2: B.Tech Academic Years (₹50,000 / Year)
+                            </span>
+                          </div>
+                          {activeScholarshipYears.filter(y => y.category === 'B.Tech').map((yr) => {
+                            const rec = scholarshipRecords[yr.id] || { credited: '', due: '' };
+                            const dueNum = parseFloat(rec.due) || 0;
+                            const isEntered = rec.credited !== '' || rec.due !== '';
+
+                            return (
+                              <div
+                                key={yr.id}
+                                className={`p-3.5 rounded-xl border transition-all ${
+                                  dueNum > 0
+                                    ? 'bg-amber-50/40 border-amber-200 shadow-xs'
+                                    : isEntered
+                                    ? 'bg-green-50/40 border-green-200'
+                                    : 'bg-surface-container-lowest border-outline-variant/30'
+                                }`}
+                              >
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-sm text-primary">{yr.name}</span>
+                                    <span className="text-[11px] bg-purple-50 text-purple-700 font-semibold px-2 py-0.5 rounded border border-purple-100">
+                                      Total Scholarship: ₹{yr.totalGrant.toLocaleString()}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    {isEntered ? (
+                                      dueNum > 0 ? (
+                                        <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                                          <AlertCircle className="w-3 h-3" /> Due: ₹{dueNum.toLocaleString()}
+                                        </span>
+                                      ) : (
+                                        <span className="text-xs font-bold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                                          <CheckCircle2 className="w-3 h-3" /> Nil Due (Full Credited)
+                                        </span>
+                                      )
+                                    ) : (
+                                      <span className="text-xs text-on-surface-variant font-medium">Pending Entry</span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  {/* Field 1: Credited Amount */}
+                                  <div>
+                                    <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1 flex justify-between">
+                                      <span>Field 1: Credited Amount</span>
+                                      <span className="text-blue-600 font-medium lowercase">received</span>
+                                    </label>
+                                    <div className="relative">
+                                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold text-xs">₹</span>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max={yr.totalGrant}
+                                        step="any"
+                                        value={rec.credited}
+                                        onChange={(e) => handleScholarshipCreditedChange(yr.id, e.target.value)}
+                                        placeholder="Enter credited (e.g. 40000)"
+                                        className="w-full pl-7 pr-3 py-2 bg-white border border-outline-variant/50 rounded-lg text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary shadow-xs transition-all"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {/* Field 2: Due Amount (Auto-calculated) */}
+                                  <div>
+                                    <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1 flex justify-between">
+                                      <span>Field 2: Due Amount</span>
+                                      <span className="text-amber-700 font-medium lowercase">remaining (auto)</span>
+                                    </label>
+                                    <div className="relative">
+                                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold text-xs">₹</span>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max={yr.totalGrant}
+                                        step="any"
+                                        value={rec.due}
+                                        onChange={(e) => handleScholarshipDueChange(yr.id, e.target.value)}
+                                        placeholder="Auto remaining (e.g. 10000)"
+                                        className={`w-full pl-7 pr-3 py-2 bg-white border rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-xs transition-all ${
+                                          dueNum > 0
+                                            ? 'border-red-300 text-red-600 bg-red-50/20 focus:border-red-500'
+                                            : isEntered
+                                            ? 'border-green-300 text-green-700 bg-green-50/20 focus:border-green-500'
+                                            : 'border-outline-variant/50 text-on-surface focus:border-primary'
+                                        }`}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Summary Footer */}
+                    <div className="bg-surface-variant/20 p-4 rounded-xl border border-outline-variant/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-on-surface-variant">Total Scholarship Grant:</span>
+                          <span className="text-xs font-bold text-on-surface">₹{totalScholarshipEntitled.toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-on-surface-variant">Total Credited:</span>
+                          <span className="text-xs font-bold text-green-700">₹{totalScholarshipCredited.toLocaleString()}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <span className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant block">Total Due Amount</span>
+                          <span className={`text-xl font-extrabold ${totalScholarshipDue > 0 ? 'text-red-600' : 'text-green-700'}`}>
+                            ₹{totalScholarshipDue.toLocaleString()}
+                          </span>
+                        </div>
+                        {totalScholarshipDue > 0 ? (
+                          <span className="text-[11px] bg-red-100 text-red-700 font-bold px-2.5 py-1 rounded-lg border border-red-200">
+                            Dues Billed to FO
+                          </span>
+                        ) : (
+                          <span className="text-[11px] bg-green-100 text-green-800 font-bold px-2.5 py-1 rounded-lg border border-green-200 flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> No Dues
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
+                
+                {/* DSW Grand Total Section */}
+                {departmentName === 'DSW' && ((parseFloat(maintenanceFee) || 0) > 0 || (isDuesAdded && (fetchedFee || 0) > 0)) && (
+                  <div className="bg-blue-50/50 p-3.5 rounded-2xl border border-blue-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-2">
+                    <div>
+                      <h5 className="font-headline-sm text-base font-bold text-blue-900 mb-0.5">Grand Total</h5>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-blue-800">
+                        {(parseFloat(maintenanceFee) || 0) > 0 && (
+                          <span className="bg-blue-100/50 px-2 py-0.5 rounded-md">Maintenance Fee: <strong>₹{parseFloat(maintenanceFee) || 0}</strong></span>
+                        )}
+                        {(parseFloat(maintenanceFee) || 0) > 0 && isDuesAdded && (fetchedFee || 0) > 0 && <span className="font-bold text-blue-400">+</span>}
+                        {isDuesAdded && (fetchedFee || 0) > 0 && (
+                          <span className="bg-blue-100/50 px-2 py-0.5 rounded-md">Dues: <strong>₹{fetchedFee}</strong></span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-xl font-bold text-blue-700 bg-white px-3 py-1.5 rounded-xl shadow-sm border border-blue-100">
+                      ₹{(parseFloat(maintenanceFee) || 0) + (isDuesAdded ? (fetchedFee || 0) : 0)}
+                    </div>
+                  </div>
+                )}
+                
+                {/* COE Academic Status Check */}
+                {departmentName === 'COE' && (
+                  <div className="space-y-3">
+                    {!coeAcademicCheck ? (
+                      <div className="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant/30 shadow-sm flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center shrink-0">
+                            <GraduationCap className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <h5 className="font-headline-sm text-base font-bold text-on-surface whitespace-nowrap">Academic Status Check</h5>
+                            <p className="text-xs text-on-surface-variant truncate">Verify student's semester exams for pass / remedial status.</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={openAcademicModal}
+                          className="whitespace-nowrap shrink-0 px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 shadow-sm bg-blue-600 hover:bg-blue-700 text-white active:scale-[0.98]"
+                        >
+                          <ClipboardList className="w-4 h-4" /> Check Academic Status
+                        </button>
+                      </div>
+                    ) : coeAcademicCheck.hasRemedial ? (
+                      <div className="bg-red-50/90 p-5 rounded-2xl border border-red-300 shadow-sm space-y-3 animate-in fade-in">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-full bg-red-100 text-red-700 flex items-center justify-center shrink-0">
+                              <AlertCircle className="w-6 h-6" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                                <span className="font-headline-sm text-base font-bold text-red-900 whitespace-nowrap">Academic Status: Remedial Pending</span>
+                                <span className="text-[10px] bg-red-200 text-red-800 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider whitespace-nowrap shrink-0">Process Stopped</span>
+                              </div>
+                              <p className="text-xs text-red-700 mt-0.5 truncate">Student has pending backlogs. Clearance cannot be approved.</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={openAcademicModal}
+                            className="whitespace-nowrap shrink-0 px-3.5 py-1.5 text-xs font-bold text-red-800 bg-white hover:bg-red-100 border border-red-300 rounded-lg transition-colors shadow-sm"
+                          >
+                            Edit / Re-check
+                          </button>
+                        </div>
+                        
+                        <div className="bg-white/90 p-3.5 rounded-xl border border-red-200">
+                          <span className="text-xs font-bold text-red-800 block mb-2">Pending Remedial Semester(s):</span>
+                          <div className="flex flex-wrap gap-2">
+                            {coeAcademicCheck.remedialSemesters.map((sem, idx) => (
+                              <span key={idx} className="bg-red-100 text-red-800 border border-red-300 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0">
+                                <span className="w-1.5 h-1.5 rounded-full bg-red-600"></span> {sem}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-green-50/80 p-5 rounded-2xl border border-green-300 shadow-sm flex items-center justify-between gap-4 animate-in fade-in">
+                        <div className="flex items-center gap-3.5 min-w-0">
+                          <div className="w-10 h-10 rounded-full bg-green-100 text-green-700 flex items-center justify-center shrink-0">
+                            <CheckCircle2 className="w-6 h-6" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                              <span className="font-headline-sm text-base font-bold text-green-900 whitespace-nowrap">Academic Status: Cleared</span>
+                              <span className="text-[10px] bg-green-200 text-green-800 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider whitespace-nowrap shrink-0">All Passed</span>
+                            </div>
+                            <p className="text-xs text-green-700 mt-0.5 truncate">All semester examinations verified successfully with no active remedials.</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={openAcademicModal}
+                          className="whitespace-nowrap shrink-0 px-3.5 py-1.5 text-xs font-bold text-green-800 bg-white hover:bg-green-100 border border-green-300 rounded-lg transition-colors shadow-sm"
+                        >
+                          Edit / Re-check
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  {/* Payment Reference ID for FO if student has dues */}
+                  {departmentName === 'FO' && isDuesAdded && Number(feeAmount) > 0 && (
+                    <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 shadow-sm">
+                      <h5 className="font-bold text-amber-800 mb-1">Total Student Dues: ₹{feeAmount}</h5>
+                      <p className="text-xs text-amber-700 mb-3">The student must pay this accumulated amount before clearance is granted.</p>
+                      {selectedClearance.feeReceiptUrl && (
+                        <div className="mb-4">
+                          <a 
+                            href={selectedClearance.feeReceiptUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 hover:bg-blue-200 px-4 py-2 rounded-lg font-bold text-sm transition-colors border border-blue-300"
+                          >
+                            <FileText className="w-4 h-4" /> View Uploaded Receipt
+                          </a>
+                        </div>
+                      )}
+                      <label className="block font-label-md text-amber-900 mb-2 font-bold text-sm">Payment Reference ID <span className="text-red-500">*</span></label>
+                      <input 
+                        type="text"
+                        required
+                        value={referenceId}
+                        onChange={e => setReferenceId(e.target.value)}
+                        placeholder="e.g. TXN-123456789"
+                        className="w-full border border-amber-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none bg-white"
+                      />
+                    </div>
+                  )}
+
+                  {/* Remarks Section - below dues and above approve button */}
+                  <div className="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant/30 shadow-sm space-y-3">
+                    <label className="block font-label-md text-on-surface font-bold flex items-center justify-between">
+                      <span>Remarks / Notes</span>
+                      <span className="text-xs font-normal text-on-surface-variant">Optional for approval, required for rejection</span>
+                    </label>
+                    <textarea 
+                      value={remarks}
+                      onChange={e => setRemarks(e.target.value)}
+                      placeholder="Enter remarks or approval notes (optional)..."
+                      className="w-full border border-outline-variant/50 rounded-xl p-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white shadow-sm transition-all"
+                      rows={3}
+                    ></textarea>
+                  </div>
+                </div>
+
+                {/* Reject & Approve Buttons - below Remarks */}
+                <div className="flex gap-4">
+                  <button 
+                    disabled={isConfirming || isConfirmed}
+                    onClick={() => handleAction('REJECT')} 
+                    className={`flex-1 text-white py-3.5 rounded-xl font-label-md font-semibold transition-all duration-300 flex items-center justify-center gap-2 shadow-sm ${
+                      isConfirmed && actionType === 'REJECT' ? 'bg-red-500' : 'bg-red-600 hover:bg-red-700'
+                    } ${departmentName === 'COE' && coeAcademicCheck?.hasRemedial ? 'ring-4 ring-red-200 animate-pulse' : ''} disabled:opacity-80`}
+                  >
+                    {isConfirmed && actionType === 'REJECT' ? (
+                      <><AlertCircle className="w-5 h-5 animate-in zoom-in" /> Rejected!</>
+                    ) : isConfirming && actionType === 'REJECT' ? (
+                      <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Rejecting...</>
+                    ) : (
+                      <><AlertCircle className="w-5 h-5" /> Reject</>
+                    )}
+                  </button>
+                  <button 
+                    disabled={
+                      isConfirming || 
+                      isConfirmed || 
+                      (departmentName === 'COE' && coeAcademicCheck?.hasRemedial) ||
+                      (departmentName === 'FO' && isDuesAdded && Number(feeAmount) > 0 && !referenceId.trim())
+                    }
+                    onClick={() => {
+                      if (departmentName === 'COE') {
+                        if (!coeAcademicCheck) {
+                          alert("Please check academic status before approving.");
+                          openAcademicModal();
+                          return;
+                        }
+                        if (coeAcademicCheck.hasRemedial) {
+                          alert("Cannot approve: Student has pending remedial exams. Process must be rejected.");
+                          return;
+                        }
+                      }
+                      const displayDueAmount = isDuesAdded ? Number(feeAmount) : 0;
+                      if (departmentName === 'FO' && displayDueAmount > 0 && !referenceId.trim()) {
+                        alert("Please enter the Payment Reference ID to approve this request.");
+                        return;
+                      }
+                      setShowConfirmPopup(true);
+                    }} 
+                    className={`flex-1 text-white py-3.5 rounded-xl font-label-md font-semibold transition-all duration-300 flex items-center justify-center gap-2 shadow-sm ${
+                      (departmentName === 'COE' && coeAcademicCheck?.hasRemedial) || (departmentName === 'FO' && isDuesAdded && Number(feeAmount) > 0 && !referenceId.trim())
+                        ? 'bg-gray-400 cursor-not-allowed opacity-60'
+                        : isConfirmed && actionType === 'APPROVE' ? 'bg-green-500' : 'bg-green-600 hover:bg-green-700'
+                    } disabled:opacity-80`}
+                  >
+                    {isConfirmed && actionType === 'APPROVE' ? (
+                      <><CheckCircle2 className="w-5 h-5 animate-in zoom-in" /> Approved!</>
+                    ) : isConfirming && actionType === 'APPROVE' ? (
+                      <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Approving...</>
+                    ) : (
+                      <><CheckCircle2 className="w-5 h-5" /> Approve</>
+                    )}
+                  </button>
+                </div>
               </div>
             )}
 
             {selectedClearance.status === 'APPROVED' && (
               <div className="mt-2">
                 {(() => {
-                  const currentSequence = selectedClearance.student?.program === 'B.Tech' ? BTECH_DEPARTMENTS : PUC_DEPARTMENTS;
-                  const currentIndex = currentSequence.indexOf(departmentName);
+                  const currentSequence = getDepartmentSequence(
+                    selectedClearance.programType || selectedClearance.student?.program,
+                    selectedClearance.pucCourseType,
+                    selectedClearance.courseType
+                  );
+                  const seqDeptName = (departmentName === 'Boys Hostel' || departmentName === 'Girls Hostel') ? 'Hostel' : departmentName;
+                  const currentIndex = currentSequence.indexOf(seqDeptName);
                   const nextDeptName = currentIndex >= 0 && currentIndex < currentSequence.length - 1 ? currentSequence[currentIndex + 1] : null;
                   if (nextDeptName) {
-                    if (selectedClearance.forwarded) {
+                    const isMpc = selectedClearance.pucCourseType === 'MPC' || 
+                      ((selectedClearance.programType || selectedClearance.student?.program) !== 'B.Tech' && selectedClearance.courseType === 'MPC');
+                    const isAlreadyMoved = selectedClearance.forwarded && (
+                      selectedClearance.forwardedTo 
+                        ? selectedClearance.forwardedTo === nextDeptName 
+                        : !(departmentName === 'Chemistry Lab' && isMpc && nextDeptName === 'COE')
+                    );
+                    if (isAlreadyMoved) {
                       return (
                         <div className="w-full bg-blue-50 text-blue-700 py-3 rounded-xl font-label-md font-semibold flex items-center justify-center gap-2 border border-blue-200">
                           <CheckCircle2 className="w-5 h-5" /> Moved to {nextDeptName}
@@ -864,9 +2437,14 @@ export default function DepartmentDashboard() {
                     return (
                       <button 
                         onClick={handleForward}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-label-md font-semibold transition-colors flex items-center justify-center gap-2 shadow-sm"
+                        disabled={isForwarding}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-label-md font-semibold transition-colors flex items-center justify-center gap-2 shadow-sm disabled:opacity-80"
                       >
-                        Move to next department ({nextDeptName})
+                        {isForwarding ? (
+                          <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Moving...</>
+                        ) : (
+                          `Move to next department (${nextDeptName})`
+                        )}
                       </button>
                     );
                   }
@@ -891,97 +2469,213 @@ export default function DepartmentDashboard() {
               </div>
             )}
 
-            {actionType && (
-              <div className="space-y-5 animate-in slide-in-from-bottom-4 duration-200 bg-surface/50 p-6 rounded-2xl border border-outline-variant/30 mt-6">
-                <div>
-                  <label className="block font-label-md text-on-surface mb-2 font-bold">Remarks / Notes</label>
-                  <textarea 
-                    value={remarks}
-                    onChange={e => setRemarks(e.target.value)}
-                    placeholder={actionType === 'REJECT' ? "Please explain why the request is rejected..." : "Optional approval notes..."}
-                    className="w-full border border-outline-variant/50 rounded-xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white shadow-sm transition-all"
-                    rows={4}
-                  ></textarea>
+            <button 
+              onClick={() => {
+                setSelectedClearance(null);
+                setActionType(null);
+                setRemarks('');
+                setFeeAmount('');
+                setMaintenanceFee('');
+                setReferenceId('');
+                setFetchedFee(null);
+                setFetchedPenalties(null);
+                setIsDuesAdded(false);
+                setIsAddingDues(false);
+                setCoeAcademicCheck(null);
+                setShowAcademicModal(false);
+              }} 
+              className="mt-6 w-full border border-outline-variant text-on-surface-variant py-3 rounded-xl font-label-md font-semibold hover:bg-surface-variant/50 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* COE Academic Status Verification Modal */}
+      {showAcademicModal && selectedClearance && (
+        <div className="fixed inset-0 bg-primary/50 backdrop-blur-sm flex items-center justify-center p-4 z-[250]">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-2xl sm:max-w-3xl w-full shadow-2xl border border-outline-variant/30 max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex justify-between items-start pb-4 border-b border-surface-variant shrink-0">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center shadow-inner">
+                  <GraduationCap className="w-7 h-7" />
                 </div>
-                
-                {actionType === 'APPROVE' && ['Hostel', 'Physics Lab', 'Chemistry Lab', 'Biology Lab', 'Library', 'IT Infra', 'Scholarship Office', 'Sports', 'FO'].includes(departmentName) && (
-                  <div>
-                    <label className="block font-label-md text-on-surface mb-2 font-bold">Fee Due Amount (₹)</label>
-                    <input 
-                      type="number"
-                      value={feeAmount}
-                      onChange={e => setFeeAmount(e.target.value)}
-                      readOnly={fetchedFee !== null && feeAmount === fetchedFee.toString()}
-                      placeholder="e.g. 500 (Leave empty if no dues)"
-                      className={`w-full border border-outline-variant/50 rounded-xl p-4 text-sm focus:outline-none shadow-sm transition-all ${fetchedFee !== null && feeAmount === fetchedFee.toString() ? 'bg-surface-variant/30 text-on-surface-variant cursor-not-allowed' : 'focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white'}`}
-                    />
-                  </div>
-                )}
-
-                {actionType === 'APPROVE' && departmentName === 'FO' && selectedClearance.totalFeeDue > 0 && (
-                  <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 mt-4 mb-4">
-                    <h5 className="font-bold text-amber-800 mb-1">Total Student Dues: ₹{selectedClearance.totalFeeDue}</h5>
-                    <p className="text-xs text-amber-700 mb-3">The student must pay this accumulated amount before clearance is granted.</p>
-                    {selectedClearance.feeReceiptUrl && (
-                      <div className="mb-4">
-                        <a 
-                          href={selectedClearance.feeReceiptUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 hover:bg-blue-200 px-4 py-2 rounded-lg font-bold text-sm transition-colors border border-blue-300"
-                        >
-                          <FileText className="w-4 h-4" /> View Uploaded Receipt
-                        </a>
-                      </div>
-                    )}
-                    <label className="block font-label-md text-amber-900 mb-2">Payment Reference ID <span className="text-red-500">*</span></label>
-                    <input 
-                      type="text"
-                      required
-                      value={referenceId}
-                      onChange={e => setReferenceId(e.target.value)}
-                      placeholder="e.g. TXN-123456789"
-                      className="w-full border border-amber-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none bg-white"
-                    />
-                  </div>
-                )}
-
-                <div className="flex gap-3 mt-4">
-                  <button 
-                    disabled={isConfirming || isConfirmed}
-                    onClick={() => setActionType(null)} 
-                    className="flex-1 border border-outline-variant py-3 rounded-xl font-label-md font-semibold hover:bg-surface-variant/50 transition-colors disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    disabled={isConfirming || isConfirmed}
-                    onClick={handleAction} 
-                    className={`flex-1 text-white py-3 rounded-xl font-label-md font-semibold flex items-center justify-center gap-2 transition-all duration-300 ${
-                      isConfirmed ? (actionType === 'APPROVE' ? 'bg-green-500' : 'bg-red-500') : 
-                      (actionType === 'APPROVE' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700')
-                    } disabled:opacity-80`}
-                  >
-                    {isConfirmed ? (
-                      <><CheckCircle2 className="w-5 h-5 animate-in zoom-in" /> Confirmed</>
-                    ) : isConfirming ? (
-                      <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Confirming...</>
-                    ) : (
-                      actionType === 'APPROVE' ? 'Confirm Approval' : 'Confirm Rejection'
-                    )}
-                  </button>
+                <div>
+                  <h3 className="font-headline-md text-xl font-bold text-primary">Academic Status Check</h3>
+                  <p className="text-xs text-on-surface-variant">
+                    {selectedClearance.student?.name} • ID: {selectedClearance.student?.studentId}
+                  </p>
                 </div>
               </div>
-            )}
-            
-            {!actionType && (
               <button 
-                onClick={() => setSelectedClearance(null)} 
-                className="mt-6 w-full border border-outline-variant text-on-surface-variant py-3 rounded-xl font-label-md font-semibold hover:bg-surface-variant/50 transition-colors"
+                onClick={() => setShowAcademicModal(false)}
+                className="text-on-surface-variant hover:text-primary transition-colors p-1 rounded-lg hover:bg-surface-variant/50"
               >
-                Close
+                ✕
               </button>
-            )}
+            </div>
+
+            {/* Program Type Indicator & Quick Actions */}
+            <div className="py-4 border-b border-surface-variant/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-on-surface-variant">Student Program:</span>
+                <span className="px-3 py-1.5 rounded-xl bg-blue-600 text-white font-bold text-xs shadow-sm flex items-center gap-1.5">
+                  <GraduationCap className="w-4 h-4" />
+                  {academicProgramType === 'B.Tech' ? 'B.Tech (12 Semesters: PUC & 4-Year B.Tech)' : 'PUC (4 Semesters: PUC-1 & PUC-2)'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleMarkAllPass}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors flex items-center gap-1.5 shadow-sm"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Mark All Pass
+                </button>
+              </div>
+            </div>
+
+            {/* Semesters List */}
+            <div className="overflow-y-auto py-4 space-y-5 flex-1 pr-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              {(academicProgramType === 'B.Tech' ? BTECH_SEMESTERS : PUC_SEMESTERS).map((group, gIdx) => (
+                <div key={gIdx} className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/30 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-sm text-primary flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                      {group.group}
+                    </h4>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {group.sems.map(sem => {
+                      const isPass = academicFormRecords[sem] === 'PASS';
+                      const isRemedial = academicFormRecords[sem] === 'REMEDIAL';
+
+                      return (
+                        <div 
+                          key={sem} 
+                          className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 ${
+                            isRemedial ? 'bg-red-50/60 border-red-200' : isPass ? 'bg-green-50/40 border-green-200' : 'bg-white border-outline-variant/30'
+                          }`}
+                        >
+                          <span className="text-xs font-bold text-slate-800 whitespace-nowrap">
+                            {sem}
+                          </span>
+
+                          <div className="inline-flex rounded-lg border border-outline-variant/30 p-0.5 bg-white shrink-0 shadow-xs">
+                            <button
+                              type="button"
+                              onClick={() => handleSemesterStatusChange(sem, 'PASS')}
+                              className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1 ${
+                                isPass 
+                                  ? 'bg-green-600 text-white shadow-xs' 
+                                  : 'text-on-surface-variant hover:text-green-700'
+                              }`}
+                            >
+                              <CheckCircle2 className="w-3 h-3" /> Pass
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSemesterStatusChange(sem, 'REMEDIAL')}
+                              className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1 ${
+                                isRemedial 
+                                  ? 'bg-red-600 text-white shadow-xs' 
+                                  : 'text-on-surface-variant hover:text-red-700'
+                              }`}
+                            >
+                              <AlertCircle className="w-3 h-3" /> Remedial
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Modal Footer / Status Summary */}
+            {(() => {
+              const sems = academicProgramType === 'B.Tech' ? BTECH_SEMESTERS : PUC_SEMESTERS;
+              const allSemNames: string[] = [];
+              sems.forEach(g => g.sems.forEach(s => allSemNames.push(s)));
+              const remedials = allSemNames.filter(s => academicFormRecords[s] === 'REMEDIAL');
+              const hasRemedial = remedials.length > 0;
+
+              return (
+                <div className="pt-4 border-t border-surface-variant shrink-0 space-y-3">
+                  {hasRemedial ? (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between text-xs text-red-800">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                        <span><strong>{remedials.length} Remedial(s) detected:</strong> Process must be stopped & rejected.</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2 text-xs text-green-800">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                      <span><strong>All Semesters Passed:</strong> Student is eligible for academic clearance.</span>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowAcademicModal(false)}
+                      className="flex-1 border border-outline-variant py-2.5 rounded-xl font-label-md font-semibold text-on-surface-variant hover:bg-surface-variant/50 transition-colors text-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveAcademicStatus}
+                      className={`flex-1 py-2.5 rounded-xl font-label-md font-semibold text-white transition-all text-sm shadow-sm flex items-center justify-center gap-2 ${
+                        hasRemedial ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
+                      }`}
+                    >
+                      {hasRemedial ? (
+                        <><AlertCircle className="w-4 h-4" /> Confirm Remedials (Stop & Reject)</>
+                      ) : (
+                        <><CheckCircle2 className="w-4 h-4" /> Save Academic Clearance</>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Approve Modal */}
+      {showConfirmPopup && (
+        <div className="fixed inset-0 bg-primary/40 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
+          <div className="bg-surface-container-lowest rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-surface-variant animate-in fade-in zoom-in-95 duration-200 text-center">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle2 className="w-8 h-8 text-green-600" />
+            </div>
+            <h3 className="font-headline-md text-xl font-bold text-primary mb-2">Confirm Approval</h3>
+            <p className="font-body-md text-on-surface-variant mb-6">Are you sure you want to approve this clearance request?</p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowConfirmPopup(false)}
+                className="flex-1 py-2.5 rounded-xl font-label-md font-semibold border border-outline-variant text-on-surface-variant hover:bg-surface-variant/50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  setShowConfirmPopup(false);
+                  handleAction('APPROVE');
+                }}
+                className="flex-1 py-2.5 rounded-xl font-label-md font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors"
+              >
+                Confirm
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1016,10 +2710,16 @@ export default function DepartmentDashboard() {
             <div className="flex items-center justify-between w-full relative">
               {/* Current Department */}
               <div className="flex flex-col items-center gap-3 z-10">
-                <div className="w-20 h-20 bg-blue-50 rounded-2xl border border-blue-200 flex items-center justify-center shadow-inner">
-                  <Building2 className="w-10 h-10 text-blue-600" />
+                <div className="w-20 h-20 bg-green-50 rounded-2xl border border-green-200 flex items-center justify-center shadow-inner relative">
+                  {(() => {
+                    const CurrentIcon = getDepartmentIcon(departmentName);
+                    return <CurrentIcon className="w-10 h-10 text-green-600" />;
+                  })()}
+                  <div className="absolute -top-3 -right-3 bg-white rounded-full p-1 shadow-md">
+                    <CheckCircle2 className="w-6 h-6 text-green-600" />
+                  </div>
                 </div>
-                <span className="font-bold text-sm text-center max-w-[120px]">{departmentName}</span>
+                <span className="font-bold text-sm text-center max-w-[120px] text-green-800">{departmentName}</span>
               </div>
 
               {/* Connecting Line & Moving File */}
@@ -1038,15 +2738,18 @@ export default function DepartmentDashboard() {
 
               {/* Next Department */}
               <div className="flex flex-col items-center gap-3 z-10">
-                <div className={`w-20 h-20 rounded-2xl border flex items-center justify-center shadow-inner transition-colors duration-500 delay-1000 relative ${forwardingAnim.progress ? 'bg-green-50 border-green-200' : 'bg-surface border-outline-variant/30'}`}>
-                  <Building2 className={`w-10 h-10 transition-colors duration-500 delay-1000 ${forwardingAnim.progress ? 'text-green-600' : 'text-outline'}`} />
+                <div className={`w-20 h-20 rounded-2xl border flex items-center justify-center shadow-inner transition-colors duration-500 delay-1000 relative ${forwardingAnim.progress ? 'bg-orange-100 border-orange-300' : 'bg-orange-50 border-orange-200'}`}>
+                  {(() => {
+                    const NextIcon = getDepartmentIcon(forwardingAnim.nextDept);
+                    return <NextIcon className={`w-10 h-10 transition-colors duration-500 delay-1000 ${forwardingAnim.progress ? 'text-orange-700' : 'text-orange-600'}`} />;
+                  })()}
                   
-                  {/* Success Tick Badge */}
+                  {/* Pending Badge */}
                   <div className={`absolute -top-3 -right-3 bg-white rounded-full p-1 shadow-md transition-all duration-500 ease-out delay-[1300ms] ${forwardingAnim.progress ? 'scale-100 opacity-100' : 'scale-0 opacity-0'}`}>
-                    <CheckCircle2 className="w-6 h-6 text-green-600" />
+                    <Clock className="w-6 h-6 text-orange-600 animate-pulse" />
                   </div>
                 </div>
-                <span className={`font-bold text-sm text-center max-w-[120px] transition-colors duration-500 delay-1000 ${forwardingAnim.progress ? 'text-green-800' : 'text-on-surface-variant'}`}>{forwardingAnim.nextDept}</span>
+                <span className={`font-bold text-sm text-center max-w-[120px] transition-colors duration-500 delay-1000 ${forwardingAnim.progress ? 'text-orange-800' : 'text-orange-700'}`}>{forwardingAnim.nextDept}</span>
               </div>
             </div>
             

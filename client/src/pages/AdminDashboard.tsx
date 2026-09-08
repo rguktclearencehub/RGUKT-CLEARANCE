@@ -1,26 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
-import { collection, getDocs, doc, updateDoc, query, where } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, updateDoc, query, where } from 'firebase/firestore';
 import { LogOut, Search, ShieldAlert, CheckCircle, Clock, AlertTriangle, RefreshCcw, UserCheck, ShieldCheck, LayoutDashboard, Settings, Book, Building, Dumbbell, Briefcase, FlaskConical, Microscope, Monitor, Award, UserCog, CheckSquare, X, CheckCircle2, AlertCircle, Lock, Mail, FileText } from 'lucide-react';
 import Bubbles from '../components/Bubbles';
 import emailjs from '@emailjs/browser';
+import {
+  generateDuesPdfBlob,
+  downloadPdfDirectly,
+  fetchDetailedStudentDues,
+  uploadToGoogleDrive,
+  getDriveDownloadLink,
+  getDrivePreviewLink
+} from '../utils/pdfGenerator';
 
 const EMAILJS_SERVICE_ID = 'service_yato66e';
 const EMAILJS_TEMPLATE_ID = 'template_zdq3aos';
 const EMAILJS_PUBLIC_KEY = 'uX0TI21Zg8bha0FM0';
 
 const PUC_DEPARTMENTS = [
-  'Hostel', 'Sports', 'Physics Lab', 'Chemistry Lab', 'Biology Lab',
+  'Hostel', 'DSW', 'Sports', 'Physics Lab', 'Chemistry Lab', 'Biology Lab',
   'COE', 'Library', 'IT Infra', 'Scholarship Office',
   'FO', 'AO', 'Director', 'Dean of Academics'
 ];
 
 const BTECH_DEPARTMENTS = [
-  'Hostel', 'Sports', 'Physics Lab', 'Chemistry Lab', 'Biology Lab',
+  'Hostel', 'DSW', 'Sports', 'Physics Lab', 'Chemistry Lab', 'Biology Lab', 'Engg Labs',
   'COE', 'HOD', 'Library', 'IT Infra', 'Scholarship Office',
   'FO', 'AO', 'Director', 'Dean of Academics'
 ];
+
+const getDepartmentSequence = (request: any) => {
+  const isBTech = request?.programType === 'B.Tech';
+  const base = isBTech ? BTECH_DEPARTMENTS : PUC_DEPARTMENTS;
+  const isMpc = request?.pucCourseType === 'MPC' || (!isBTech && request?.courseType === 'MPC');
+  return base.filter((d: string) => !(isMpc && d === 'Biology Lab'));
+};
 
 const MOCK_SUBMISSION_TEMPLATE = `
   <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 0; border: 1px solid #dcfce7; border-radius: 12px; background-color: #ffffff; overflow: hidden; box-shadow: 0 4px 15px rgba(22, 163, 74, 0.1);">
@@ -147,12 +162,14 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [adminName, setAdminName] = useState('Admin');
+  const [pdfTemplateText, setPdfTemplateText] = useState('');
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
     if (!userStr) {
-      navigate('/login');
+      navigate('/login', { replace: true });
       return;
     }
     const user = JSON.parse(userStr);
@@ -162,6 +179,24 @@ export default function AdminDashboard() {
     }
     setAdminName(user.name || 'Admin');
     fetchData();
+
+    // Prevent back navigation
+    window.history.pushState(null, '', window.location.href);
+    const handlePopState = () => {
+      setActiveTab(prev => {
+        if (prev !== 'dashboard') {
+          window.history.pushState(null, '', window.location.href);
+          return 'dashboard';
+        }
+        window.history.pushState(null, '', window.location.href);
+        return prev;
+      });
+    };
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, [navigate]);
 
   const fetchData = async () => {
@@ -231,6 +266,28 @@ export default function AdminDashboard() {
       formattedRequests.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       
       setRequests(formattedRequests);
+
+      // Fetch PDF Template
+      const templateDoc = await getDoc(doc(db, 'settings', 'pdfTemplate'));
+      if (templateDoc.exists()) {
+        setPdfTemplateText(templateDoc.data().html || '');
+      } else {
+        // Default
+        setPdfTemplateText(`
+    <div style="font-family: Arial, sans-serif; padding: 40px; color: #333;">
+      <h1 style="text-align: center; color: #1e3a8a; margin-bottom: 20px;">Dues & Penalties Report</h1>
+      <hr style="border: 1px solid #e2e8f0; margin-bottom: 20px;"/>
+      <h3 style="color: #475569;">Student Details</h3>
+      <p><strong>Name:</strong> {{studentName}}</p>
+      <p><strong>ID:</strong> {{studentId}}</p>
+      <h3 style="color: #475569; margin-top: 30px;">Dues Breakdown</h3>
+      {{duesBreakdown}}
+      <hr style="border: 1px solid #e2e8f0; margin-top: 30px; margin-bottom: 20px;"/>
+      <h2 style="text-align: right; color: #b91c1c;">Total Due: ₹{{totalDue}}</h2>
+    </div>
+        `);
+      }
+
     } catch (err) {
       console.error("Error fetching admin data:", err);
     } finally {
@@ -240,7 +297,52 @@ export default function AdminDashboard() {
 
   const handleLogout = () => {
     localStorage.removeItem('user');
-    navigate('/login');
+    navigate('/login', { replace: true });
+  };
+
+  const savePdfTemplate = async () => {
+    setSavingTemplate(true);
+    try {
+      await updateDoc(doc(db, 'settings', 'pdfTemplate'), { html: pdfTemplateText }).catch(async () => {
+        // If it doesn't exist yet, we need to create it (writeBatch or setDoc is better, but let's just use setDoc if updateDoc fails)
+        const { setDoc } = await import('firebase/firestore');
+        await setDoc(doc(db, 'settings', 'pdfTemplate'), { html: pdfTemplateText });
+      });
+      alert('Template saved successfully!');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to save template.');
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  const handleTestDownloadPdf = async () => {
+    try {
+      const sampleGroups = [
+        { department: 'Boys Hostel', subtotal: 800, items: [{ reason: 'DOOR', amount: 500 }, { reason: 'WINDOW', amount: 300 }] },
+        { department: 'Chemistry Lab', subtotal: 300, items: [{ reason: 'Solution & Glass Jar Broken', amount: 300 }] },
+        { department: 'Library', subtotal: 300, items: [{ reason: 'Book1 not returned', amount: 200 }, { reason: 'Book2 not returned', amount: 100 }] },
+        { department: 'Scholarship Office', subtotal: 33000, items: [{ reason: 'PUC 1st Year (P1) Tuition & Mess Due', amount: 10000 }, { reason: 'PUC 2nd Year (P2) Tuition & Mess Due', amount: 23000 }] },
+        { department: 'IT Infra', subtotal: 1300, items: [{ reason: 'laptop Battery Missing', amount: 1000 }, { reason: 'Keyboard Broken', amount: 300 }] },
+        { department: 'DSW', subtotal: 12020, items: [{ reason: 'Projector Damage', amount: 10000 }, { reason: 'Router', amount: 2000 }, { reason: 'Campus Maintenance', amount: 20 }] }
+      ];
+
+      const blob = await generateDuesPdfBlob(
+        '',
+        {
+          name: 'B Nagesh',
+          studentId: 'R240384',
+          program: 'PUC (MPC)',
+          hostel: 'Boys Hostel (MH-1)'
+        },
+        sampleGroups,
+        47720
+      );
+      downloadPdfDirectly(blob, 'Sample_Official_RGUKT_Dues_Report.pdf');
+    } catch (err: any) {
+      alert('Error generating test PDF: ' + (err.message || err));
+    }
   };
 
   const overrideApprove = async (departmentId: string, departmentName: string, studentName: string, reqId: string) => {
@@ -268,22 +370,93 @@ export default function AdminDashboard() {
           
           if (nextDepName === 'FO' && req.totalFeeDue > 0 && req.email) {
             try {
-              const dcQuery = query(collection(db, 'departmentClearances'), where('requestId', '==', req.id));
-              const dcSnap = await getDocs(dcQuery);
-              
+              const { groups: duesGroups, grandTotal: detailedTotal } = await fetchDetailedStudentDues(req.studentId || req.id, req);
+
+              let driveFileId: string | null = null;
+              try {
+                const pdfBlob = await generateDuesPdfBlob(
+                  '',
+                  {
+                    name: studentName,
+                    studentId: req.studentId || req.id,
+                    program: req.programType || 'PUC',
+                    department: req.department || '',
+                    hostel: req.presentHostel || ''
+                  },
+                  duesGroups,
+                  req.totalFeeDue || detailedTotal
+                );
+
+                try {
+                  driveFileId = await uploadToGoogleDrive(pdfBlob, `${req.studentId || req.id}_Official_Dues_Report.pdf`);
+                  if (driveFileId) {
+                    await updateDoc(doc(db, 'clearanceRequests', req.id), { duesPdfFileId: driveFileId });
+                  }
+                } catch (driveErr) {
+                  console.warn("Google Drive sync optional/skipped:", driveErr);
+                }
+              } catch (pdfErr) {
+                console.error("Failed to generate PDF for admin override email:", pdfErr);
+              }
+
+              const baseUrl = window.location.origin.includes('localhost')
+                ? 'https://rguktclearance.vercel.app'
+                : window.location.origin;
+
+              const directDownloadUrl = `${baseUrl}/download-dues?reqId=${req.id}&studentId=${req.studentId || req.id}`;
+              const primaryDownloadUrl = driveFileId ? getDriveDownloadLink(driveFileId) : directDownloadUrl;
+
+              const pdfLinkHtml = `
+                <div style="margin-top: 26px; padding: 22px; background-color: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 12px; text-align: center;">
+                  <div style="display: inline-block; padding: 4px 12px; background-color: #fee2e2; border-radius: 20px; font-size: 11px; font-weight: 700; color: #991b1b; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.5px;">
+                    Official Statement Attached
+                  </div>
+                  <h4 style="margin: 0 0 6px 0; color: #0f172a; font-size: 16px; font-weight: 700;">Official Dues & Penalties Statement (PDF)</h4>
+                  <p style="margin: 0 0 16px 0; color: #64748b; font-size: 13px; line-height: 1.5;">
+                    An official university certificate statement has been generated with your itemized penalty particulars, department subtotals, and clearance verification.
+                  </p>
+                  <div>
+                    <a href="${primaryDownloadUrl}" style="display: inline-block; background-color: #991b1b; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 10px rgba(153, 27, 27, 0.25);">
+                      ⬇ Download Official PDF Statement
+                    </a>
+                  </div>
+                  ${driveFileId ? `
+                    <div style="margin-top: 10px;">
+                      <a href="${getDrivePreviewLink(driveFileId)}" target="_blank" style="color: #2563eb; font-size: 12px; font-weight: 600; text-decoration: underline;">
+                        View on Google Drive
+                      </a>
+                    </div>
+                  ` : `
+                    <p style="color: #94a3b8; font-size: 11px; margin: 10px 0 0 0;">
+                      (Click the button above to download your official PDF statement directly)
+                    </p>
+                  `}
+                </div>
+              `;
+
               let duesHtml = '';
-              dcSnap.forEach(d => {
-                const data = d.data();
-                if (data.feeDue && data.feeDue > 0) {
+              if (!duesGroups || duesGroups.length === 0) {
+                duesHtml = `<tr><td colspan="3" style="padding: 12px; text-align: center; color: #64748b;">No pending dues.</td></tr>`;
+              } else {
+                duesGroups.forEach((g: any) => {
                   duesHtml += `
-                    <tr>
-                      <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155;"><strong>${data.departmentName}</strong></td>
-                      <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #64748b;">${data.remarks || 'Dues pending'}</td>
-                      <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #ef4444; font-weight: 600; text-align: right;">₹${data.feeDue}</td>
+                    <tr style="background-color: #f8fafc;">
+                      <td colspan="3" style="padding: 10px 12px; border-bottom: 1px solid #cbd5e1; color: #1e293b; font-weight: bold; font-size: 13px;">
+                        ${g.department.toUpperCase()} &nbsp;<span style="color: #64748b; font-weight: normal; font-size: 12px;">(Subtotal: ₹${g.subtotal.toLocaleString('en-IN')})</span>
+                      </td>
                     </tr>
                   `;
-                }
-              });
+                  g.items.forEach((item: any) => {
+                    duesHtml += `
+                      <tr>
+                        <td style="padding: 10px 12px 10px 24px; border-bottom: 1px solid #f1f5f9; color: #475569; font-size: 13px;">• ${g.department}</td>
+                        <td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #1e293b; font-weight: 500; font-size: 13px;">${item.reason}</td>
+                        <td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #dc2626; font-weight: 700; text-align: right; font-size: 13px;">₹${item.amount.toLocaleString('en-IN')}</td>
+                      </tr>
+                    `;
+                  });
+                });
+              }
 
               const htmlMessage = `
                 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
@@ -331,6 +504,7 @@ export default function AdminDashboard() {
                     <div style="text-align: center;">
                       <a href="https://rguktclearance.vercel.app/" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">Upload Receipt</a>
                     </div>
+                    ${pdfLinkHtml}
                   </div>
                   <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
                     <p style="color: #94a3b8; font-size: 12px; margin: 0;">
@@ -386,7 +560,7 @@ export default function AdminDashboard() {
     if (n.includes('BIOLOGY')) return <Microscope className="w-5 h-5" />;
     if (n.includes('IT INFRA')) return <Monitor className="w-5 h-5" />;
     if (n.includes('SCHOLARSHIP')) return <Award className="w-5 h-5" />;
-    if (n.includes('DEAN') || n.includes('DIRECTOR') || n.includes('AO') || n.includes('COE') || n.includes('HOD')) return <UserCog className="w-5 h-5" />;
+    if (n.includes('DEAN') || n.includes('DIRECTOR') || n.includes('AO') || n.includes('COE') || n.includes('HOD') || n.includes('DSW')) return <UserCog className="w-5 h-5" />;
     return <CheckSquare className="w-5 h-5" />;
   };
 
@@ -394,7 +568,7 @@ export default function AdminDashboard() {
     <div className="flex min-h-screen text-on-background font-body-md antialiased">
       
       {/* SideNavBar Component - Exactly like StudentDashboard */}
-      <aside className="bg-primary-container h-full w-64 fixed left-0 top-0 rounded-r-3xl border-r border-outline-variant/10 shadow-xl flex flex-col py-8 z-50">
+      <aside className="bg-primary-container h-full w-64 fixed left-0 top-0 rounded-r-3xl border-r border-outline-variant/10 shadow-xl flex flex-col py-8 z-50 transition-transform duration-300 hover:scale-[1.03] origin-left">
         <div className="px-6 mb-8 flex flex-col items-center">
           <div className="w-24 h-24 mb-4 flex items-center justify-center">
             <img src="/logo.png" alt="RGUKT Logo" className="w-full h-full object-contain" />
@@ -424,6 +598,13 @@ export default function AdminDashboard() {
           >
             <Mail className="w-5 h-5" />
             Email Templates
+          </button>
+          <button 
+            onClick={() => setActiveTab('pdf_templates')}
+            className={`w-full flex items-center gap-3 px-4 py-3 font-label-md transition-all duration-300 rounded-lg ${activeTab === 'pdf_templates' ? 'text-surface-container-lowest border-l-2 border-secondary-container bg-surface-variant/10 rounded-r-lg' : 'text-on-primary-container/70 hover:bg-surface-variant/20 hover:text-surface-container-lowest'}`}
+          >
+            <FileText className="w-5 h-5" />
+            PDF Templates
           </button>
           <button 
             className="w-full flex items-center gap-3 px-4 py-3 font-label-md transition-all duration-300 rounded-lg text-on-primary-container/70 hover:bg-surface-variant/20 hover:text-surface-container-lowest"
@@ -674,6 +855,203 @@ export default function AdminDashboard() {
                 </div>
               </div>
             )}
+
+            {activeTab === 'pdf_templates' && (
+              <div className="space-y-8">
+                {/* Official Certificate Style Preview Card */}
+                <div className="bg-surface-container-lowest rounded-3xl border border-surface-variant shadow-sm overflow-hidden flex flex-col p-8">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                    <div>
+                      <h3 className="font-headline-sm text-2xl font-bold text-primary flex items-center gap-2">
+                        <FileText className="w-6 h-6 text-red-600" />
+                        Official Certificate-Style Dues Report (Vector PDF)
+                      </h3>
+                      <p className="font-body-md text-on-surface-variant mt-1 max-w-2xl">
+                        The automated system generates crisp, vector-based PDF certificates with the official RGUKT seal, department grouping, and individual penalty items.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleTestDownloadPdf}
+                      className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md transition-all flex items-center gap-2 self-start sm:self-auto cursor-pointer"
+                    >
+                      <FileText className="w-4 h-4" /> Test Download Official PDF
+                    </button>
+                  </div>
+
+                  {/* Visual Mock of the Official Certificate PDF */}
+                  <div className="p-6 bg-slate-100 rounded-2xl border border-slate-200 shadow-inner flex justify-center">
+                    <div className="bg-white w-full max-w-3xl rounded-xl shadow-lg border-[4px] border-double border-red-900/40 p-6 relative">
+                      {/* Inner gold border */}
+                      <div className="border border-amber-600/50 rounded-lg p-5">
+                        
+                        {/* University Header */}
+                        <div className="flex items-center gap-4 border-b-2 border-red-800/80 pb-3 mb-4">
+                          <img src="/rgukt.png" alt="RGUKT Logo" className="w-14 h-14 object-contain shrink-0" />
+                          <div className="flex-1 text-center pr-10">
+                            <h4 className="text-sm font-bold text-[#b03a2e] uppercase tracking-wide">
+                              Rajiv Gandhi University of Knowledge Technologies
+                            </h4>
+                            <p className="text-[10px] text-slate-600 font-medium leading-tight mt-0.5">
+                              (A.P. Government Act 18 of 2008) • IIIT RK Valley Campus, RGUKT-A.P.<br />
+                              RK Valley (Idupulapaya), Vempalli (M), Y.S.R. Kadapa Dist., A.P - 516330
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Title Banner */}
+                        <div className="bg-red-50 border border-red-200 rounded-md py-1.5 px-3 text-center mb-4">
+                          <span className="text-xs font-bold text-red-800 tracking-wide uppercase">
+                            Official Statement of Outstanding Dues & Penalties
+                          </span>
+                        </div>
+
+                        {/* Student Meta Box */}
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs grid grid-cols-2 gap-2 mb-4">
+                          <div>
+                            <span className="text-slate-500 font-medium">Student Name: </span>
+                            <span className="font-bold text-slate-800">B Nagesh</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 font-medium">Statement Date: </span>
+                            <span className="font-bold text-slate-800">September 8, 2026</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 font-medium">Student ID: </span>
+                            <span className="font-bold text-slate-800">R240384</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 font-medium">Clearance Status: </span>
+                            <span className="font-bold text-red-600">ACTION REQUIRED (Pending FO)</span>
+                          </div>
+                        </div>
+
+                        {/* Divided Department Breakdown Table (4-Column University Audit Format) */}
+                        <div className="border border-slate-300 rounded-md overflow-hidden text-xs mb-4">
+                          <div className="bg-slate-900 text-white font-bold grid grid-cols-12 px-3 py-2 text-[11px]">
+                            <div className="col-span-1 text-center">#</div>
+                            <div className="col-span-3">Department / Section</div>
+                            <div className="col-span-6">Item Description / Penalty Particulars</div>
+                            <div className="col-span-2 text-right">Amount (Rs.)</div>
+                          </div>
+
+                          {/* Boys Hostel */}
+                          <div className="bg-slate-100/90 font-bold px-3 py-2 border-t border-slate-200 border-l-4 border-l-red-800 flex justify-between items-center text-slate-900 text-[11px]">
+                            <span>DEPARTMENT: BOYS HOSTEL</span>
+                            <span>Subtotal: Rs. 800.00</span>
+                          </div>
+                          <div className="px-3 py-1.5 border-t border-slate-100 grid grid-cols-12 text-slate-700 bg-white items-center text-[11px]">
+                            <div className="col-span-1 text-center text-slate-400 font-medium">1</div>
+                            <div className="col-span-3 text-slate-600 font-medium">Boys Hostel</div>
+                            <div className="col-span-6 font-bold text-slate-900">DOOR Breakage</div>
+                            <div className="col-span-2 text-right font-bold text-red-600">Rs. 500.00</div>
+                          </div>
+                          <div className="px-3 py-1.5 border-t border-slate-100 grid grid-cols-12 text-slate-700 bg-white items-center text-[11px]">
+                            <div className="col-span-1 text-center text-slate-400 font-medium">2</div>
+                            <div className="col-span-3 text-slate-600 font-medium">Boys Hostel</div>
+                            <div className="col-span-6 font-bold text-slate-900">WINDOW Damage</div>
+                            <div className="col-span-2 text-right font-bold text-red-600">Rs. 300.00</div>
+                          </div>
+
+                          {/* Chemistry Lab */}
+                          <div className="bg-slate-100/90 font-bold px-3 py-2 border-t border-slate-200 border-l-4 border-l-red-800 flex justify-between items-center text-slate-900 text-[11px]">
+                            <span>DEPARTMENT: CHEMISTRY LAB</span>
+                            <span>Subtotal: Rs. 300.00</span>
+                          </div>
+                          <div className="px-3 py-1.5 border-t border-slate-100 grid grid-cols-12 text-slate-700 bg-white items-center text-[11px]">
+                            <div className="col-span-1 text-center text-slate-400 font-medium">3</div>
+                            <div className="col-span-3 text-slate-600 font-medium">Chemistry Lab</div>
+                            <div className="col-span-6 font-bold text-slate-900">Solution & Glass Jar Broken</div>
+                            <div className="col-span-2 text-right font-bold text-red-600">Rs. 300.00</div>
+                          </div>
+
+                          {/* Library */}
+                          <div className="bg-slate-100/90 font-bold px-3 py-2 border-t border-slate-200 border-l-4 border-l-red-800 flex justify-between items-center text-slate-900 text-[11px]">
+                            <span>DEPARTMENT: LIBRARY</span>
+                            <span>Subtotal: Rs. 300.00</span>
+                          </div>
+                          <div className="px-3 py-1.5 border-t border-slate-100 grid grid-cols-12 text-slate-700 bg-white items-center text-[11px]">
+                            <div className="col-span-1 text-center text-slate-400 font-medium">4</div>
+                            <div className="col-span-3 text-slate-600 font-medium">Library</div>
+                            <div className="col-span-6 font-bold text-slate-900">Book 1 not returned</div>
+                            <div className="col-span-2 text-right font-bold text-red-600">Rs. 200.00</div>
+                          </div>
+                          <div className="px-3 py-1.5 border-t border-slate-100 grid grid-cols-12 text-slate-700 bg-white items-center text-[11px]">
+                            <div className="col-span-1 text-center text-slate-400 font-medium">5</div>
+                            <div className="col-span-3 text-slate-600 font-medium">Library</div>
+                            <div className="col-span-6 font-bold text-slate-900">Book 2 not returned</div>
+                            <div className="col-span-2 text-right font-bold text-red-600">Rs. 100.00</div>
+                          </div>
+
+                          {/* Scholarship Office */}
+                          <div className="bg-slate-100/90 font-bold px-3 py-2 border-t border-slate-200 border-l-4 border-l-red-800 flex justify-between items-center text-slate-900 text-[11px]">
+                            <span>DEPARTMENT: SCHOLARSHIP OFFICE</span>
+                            <span>Subtotal: Rs. 33,000.00</span>
+                          </div>
+                          <div className="px-3 py-1.5 border-t border-slate-100 grid grid-cols-12 text-slate-700 bg-white items-center text-[11px]">
+                            <div className="col-span-1 text-center text-slate-400 font-medium">6</div>
+                            <div className="col-span-3 text-slate-600 font-medium">Scholarship Office</div>
+                            <div className="col-span-6 font-bold text-slate-900">PUC 1st Year (P1) Tuition & Mess Due</div>
+                            <div className="col-span-2 text-right font-bold text-red-600">Rs. 10,000.00</div>
+                          </div>
+                          <div className="px-3 py-1.5 border-t border-slate-100 grid grid-cols-12 text-slate-700 bg-white items-center text-[11px]">
+                            <div className="col-span-1 text-center text-slate-400 font-medium">7</div>
+                            <div className="col-span-3 text-slate-600 font-medium">Scholarship Office</div>
+                            <div className="col-span-6 font-bold text-slate-900">PUC 2nd Year (P2) Tuition & Mess Due</div>
+                            <div className="col-span-2 text-right font-bold text-red-600">Rs. 23,000.00</div>
+                          </div>
+
+                          {/* Grand Total Footer */}
+                          <div className="bg-red-50 font-bold px-3 py-2.5 border-t-2 border-red-300 flex justify-between items-center text-xs text-red-900">
+                            <span>TOTAL OUTSTANDING DUES TO BE PAID:</span>
+                            <span className="text-sm font-black text-red-700">Rs. 47,720.00</span>
+                          </div>
+                        </div>
+
+                        {/* In Words & Signatures */}
+                        <div className="bg-slate-50 p-2 rounded border border-slate-200 text-[11px] mb-4 text-slate-700">
+                          <span className="font-bold text-slate-500">Amount in words: </span>
+                          <span className="italic">Rupees Forty-Seven Thousand Seven Hundred Twenty Only</span>
+                        </div>
+
+                        <div className="flex justify-between items-end pt-3 text-center text-xs">
+                          <div>
+                            <span className="italic font-serif text-blue-900/70 text-[11px] block">Approved Digitally</span>
+                            <div className="border-t border-slate-400 pt-1 font-bold text-slate-800 text-[10px]">Department In-charges</div>
+                          </div>
+                          <div>
+                            <span className="italic font-serif text-blue-900/70 text-[11px] block">Approved Digitally</span>
+                            <div className="border-t border-slate-400 pt-1 font-bold text-slate-800 text-[10px]">Finance Officer (FO)</div>
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Legacy HTML Template Editor for Custom Branding */}
+                <div className="bg-surface-container-lowest rounded-3xl border border-surface-variant shadow-sm overflow-hidden flex flex-col p-8">
+                  <h3 className="font-headline-sm text-xl font-bold text-primary mb-3">Custom HTML Template Override</h3>
+                  <p className="font-body-md text-on-surface-variant mb-4 text-sm max-w-3xl">
+                    Configure optional custom styling or template overrides for automated alerts. Supported placeholders: <code>{'{{studentName}}'}</code>, <code>{'{{studentId}}'}</code>, <code>{'{{totalDue}}'}</code>, <code>{'{{duesBreakdown}}'}</code>.
+                  </p>
+                  
+                  <textarea
+                    className="w-full h-64 p-4 font-mono text-sm border border-outline-variant rounded-xl bg-surface mb-4"
+                    value={pdfTemplateText}
+                    onChange={(e) => setPdfTemplateText(e.target.value)}
+                  />
+                  
+                  <button
+                    onClick={savePdfTemplate}
+                    disabled={savingTemplate}
+                    className="bg-primary text-on-primary px-6 py-2 rounded-xl font-bold self-start hover:bg-primary/90 transition-colors disabled:opacity-70 cursor-pointer"
+                  >
+                    {savingTemplate ? 'Saving...' : 'Save Template'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </main>
       </div>
@@ -685,7 +1063,7 @@ export default function AdminDashboard() {
             <div className="sticky top-0 bg-surface/80 backdrop-blur-md p-6 border-b border-surface-variant flex justify-between items-center z-10">
               <div>
                 <h3 className="font-headline-md text-2xl font-bold text-primary">{selectedRequest.studentName}</h3>
-                <p className="font-body-sm text-on-surface-variant">ID: {selectedRequest.actualStudentId} • {selectedRequest.programType || 'B.Tech'}{selectedRequest.presentHostel ? ` • Hostel: ${selectedRequest.presentHostel}` : ''}</p>
+                <p className="font-body-sm text-on-surface-variant">ID: {selectedRequest.actualStudentId} • {selectedRequest.programType || 'B.Tech'} {selectedRequest.courseType ? `(${selectedRequest.courseType})` : ''}{selectedRequest.programType === 'B.Tech' && selectedRequest.pucCourseType ? ` - ${selectedRequest.pucCourseType}` : ''}{selectedRequest.presentHostel ? ` • Hostel: ${selectedRequest.presentHostel}` : ''}</p>
               </div>
               <button onClick={() => setSelectedRequest(null)} className="p-2 rounded-full hover:bg-surface-variant transition-colors text-on-surface-variant">
                 <X className="w-6 h-6" />
@@ -711,11 +1089,11 @@ export default function AdminDashboard() {
                 {/* Visual Flow (StudentDashboard Style) */}
                 <div className="w-full pb-10 pt-2 flex justify-center overflow-x-auto no-scrollbar">
                   <div className="flex items-center min-w-max px-2">
-                    {(selectedRequest.programType === 'PUC' ? PUC_DEPARTMENTS : BTECH_DEPARTMENTS).map((deptName: string, index: number, arr: string[]) => {
+                    {getDepartmentSequence(selectedRequest).map((deptName: string, index: number, arr: string[]) => {
                       const dep = selectedRequest.departmentClearances.find((d: any) => d.departmentName === deptName);
                       const isApproved = dep?.status === 'APPROVED';
                       const isRejected = dep?.status === 'REJECTED';
-                      const isSent = !!dep;
+                      const isPending = dep?.status === 'PENDING';
                       
                       return (
                         <div key={deptName} className={`flex items-center ${index < arr.length - 1 ? 'flex-1' : ''}`}>
@@ -724,7 +1102,7 @@ export default function AdminDashboard() {
                             <div className={`w-10 h-10 lg:w-12 lg:h-12 rounded-full flex items-center justify-center z-10 transition-all duration-300 border-[3px] shadow-sm shrink-0 ${
                               isApproved ? 'bg-green-500 border-green-100 text-white' : 
                               isRejected ? 'bg-error border-error-container text-white' :
-                              isSent ? 'bg-amber-400 border-amber-100 text-white' :
+                              isPending ? 'bg-amber-500 border-amber-100 text-white ring-4 ring-amber-200/50 animate-pulse' :
                               'bg-surface border-surface-variant text-outline-variant'
                             }`}>
                               <div className="scale-75 lg:scale-90 flex items-center justify-center">
@@ -738,16 +1116,18 @@ export default function AdminDashboard() {
                                 <div className="bg-white rounded-full text-green-500 shadow-sm"><CheckCircle2 className="w-4 h-4" /></div>
                               ) : isRejected ? (
                                 <div className="bg-white rounded-full text-error shadow-sm"><AlertCircle className="w-4 h-4" /></div>
-                              ) : isSent ? (
+                              ) : isPending ? (
                                 <div className="bg-white rounded-full text-amber-500 shadow-sm"><Clock className="w-4 h-4" /></div>
-                              ) : null}
+                              ) : (
+                                <div className="bg-white rounded-full text-outline-variant shadow-sm p-0.5"><Lock className="w-3 h-3" /></div>
+                              )}
                             </div>
                             
                             <div className="absolute top-12 lg:top-14 w-20 lg:w-24 text-center">
                               <span className={`text-[9px] lg:text-[10px] font-bold uppercase tracking-wider leading-tight line-clamp-2 ${
-                                isApproved ? 'text-green-700' : 
-                                isRejected ? 'text-error' :
-                                isSent ? 'text-amber-700' : 
+                                isApproved ? 'text-green-700 font-bold' : 
+                                isRejected ? 'text-error font-bold' :
+                                isPending ? 'text-amber-700 font-extrabold' : 
                                 'text-outline'
                               }`}>
                                 {deptName}
@@ -758,7 +1138,7 @@ export default function AdminDashboard() {
                           {/* Connecting Line */}
                           {index < arr.length - 1 && (
                             <div className={`w-8 lg:w-16 h-1 mx-1 lg:mx-2 rounded-full transition-colors duration-500 ${
-                              isApproved ? 'bg-green-400' : 'bg-surface-variant'
+                              isApproved ? 'bg-green-500' : 'bg-surface-variant'
                             }`}></div>
                           )}
                         </div>
@@ -771,7 +1151,7 @@ export default function AdminDashboard() {
               <div>
                 <h4 className="font-headline-sm text-lg font-bold text-primary mb-4">Department Status</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-                  {(selectedRequest.programType === 'PUC' ? PUC_DEPARTMENTS : BTECH_DEPARTMENTS).map((deptName: string, index: number) => {
+                  {getDepartmentSequence(selectedRequest).map((deptName: string, index: number) => {
                     const dept = selectedRequest.departmentClearances.find((d: any) => d.departmentName === deptName);
                     
                     return (

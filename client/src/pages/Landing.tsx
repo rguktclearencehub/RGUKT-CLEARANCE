@@ -1,8 +1,27 @@
 import { useNavigate } from 'react-router-dom';
 import { LogIn } from 'lucide-react';
+import { useEffect } from 'react';
 
 export default function Landing() {
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const userData = JSON.parse(storedUser);
+        if (userData.role === 'STUDENT') {
+          navigate('/student/dashboard', { replace: true });
+        } else if (userData.role === 'ADMIN') {
+          navigate('/admin/dashboard', { replace: true });
+        } else {
+          navigate('/department/dashboard', { replace: true });
+        }
+      } catch (e) {
+        console.error("Error parsing stored user", e);
+      }
+    }
+  }, [navigate]);
 
   return (
     <div className="w-screen h-screen relative bg-[#faf7ef] overflow-hidden">

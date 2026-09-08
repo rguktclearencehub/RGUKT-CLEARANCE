@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, EyeOff, ArrowRight } from 'lucide-react';
+import { Mail, Lock, EyeOff, ArrowRight, AlertCircle } from 'lucide-react';
 import { auth, googleProvider, db } from '../firebase';
-import { signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider } from 'firebase/auth';
 import { doc, getDoc, writeBatch, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 
 const KNOWN_DEPARTMENT_EMAILS = [
@@ -20,7 +20,9 @@ const KNOWN_DEPARTMENT_EMAILS = [
   'accounts@university.edu',
   'ao@university.edu',
   'director@university.edu',
-  'deanofacademics@university.edu'
+  'deanofacademics@university.edu',
+  'dsw@university.edu',
+  'dsw@dept.rgukt.in'
 ];
 
 export default function Login() {
@@ -29,6 +31,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showDeptAlert, setShowDeptAlert] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -53,6 +56,12 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     setError('');
+    
+    if (loginType === 'student' && email.toLowerCase().endsWith('@dept.rgukt.in')) {
+      setShowDeptAlert(true);
+      setLoading(false);
+      return;
+    }
     
     try {
       let user;
@@ -110,7 +119,7 @@ export default function Login() {
         userData = userSnap.data();
         
         // Auto-fix accidentally incorrect roles for known departments
-        if (user.email && KNOWN_DEPARTMENT_EMAILS.includes(user.email.toLowerCase()) && userData.role !== 'DEPARTMENT') {
+        if (user.email && (KNOWN_DEPARTMENT_EMAILS.includes(user.email.toLowerCase()) || user.email.toLowerCase().endsWith('@dept.rgukt.in')) && userData.role !== 'DEPARTMENT') {
           userData.role = 'DEPARTMENT';
           await updateDoc(userRef, { role: 'DEPARTMENT' });
         }
@@ -144,6 +153,10 @@ export default function Login() {
     setError('');
     try {
       const result = await signInWithPopup(auth, googleProvider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        localStorage.setItem('gdrive_token', credential.accessToken);
+      }
       const user = result.user;
       
       const emailLower = user.email?.trim().toLowerCase() || '';
@@ -238,13 +251,10 @@ export default function Login() {
             <div className="mb-4">
               <img src="/logo.png" alt="RGUKT Logo" className="w-20 h-20 object-contain rounded-full mx-auto" />
             </div>
-
-            <h1 className="font-headline-lg text-2xl font-bold text-slate-900 mb-1">
+            
+            <h2 className="text-2xl font-headline-md font-bold text-slate-800 tracking-tight text-center mb-5">
               Welcome to RGUKT CLEARANCE
-            </h1>
-            <p className="font-body-md text-sm text-slate-500 mb-5">
-              Get started - it's free.
-            </p>
+            </h2>
 
             {/* Login Type Toggle */}
             <div className="w-full bg-slate-100 p-1 rounded-lg flex mb-5">
@@ -316,9 +326,8 @@ export default function Login() {
               </button>
             </form>
 
-            {loginType === 'student' && (
-              <>
-                <div className="w-full flex items-center mb-6">
+            <div className={`w-full transition-opacity duration-300 ${loginType === 'student' ? 'opacity-100' : 'opacity-0 pointer-events-none select-none'}`}>
+              <div className="w-full flex items-center mb-6 mt-1">
                   <div className="flex-grow border-t border-slate-200"></div>
                   <span className="flex-shrink-0 mx-3 font-label-sm text-xs text-slate-400">OR CONTINUE WITH</span>
                   <div className="flex-grow border-t border-slate-200"></div>
@@ -339,8 +348,7 @@ export default function Login() {
                   </svg>
                   <span className="font-bold text-slate-700 text-xs tracking-wide">SIGN IN WITH GOOGLE</span>
                 </button>
-              </>
-            )}
+            </div>
 
             <p className="mt-5 text-center text-[11px] text-slate-500 leading-relaxed max-w-[280px]">
               By continuing, you indicate that you have read, understood and agree to RGUKT CLEARANCE's <a href="#" className="text-blue-600 font-semibold hover:underline">Terms of Service</a> and <a href="#" className="text-blue-600 font-semibold hover:underline">Privacy Policy</a>
@@ -349,6 +357,40 @@ export default function Login() {
           </div>
         </div>
       </div>
+
+      {/* Custom Department Login Alert Modal */}
+      {showDeptAlert && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-backdrop-in">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-modal-in">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-amber-100 text-amber-500 rounded-full flex items-center justify-center mb-4">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800 mb-2">Department Login Detected</h3>
+              <p className="text-sm text-slate-500 mb-6">
+                This is a department email. Please login using the department login section.
+              </p>
+              <div className="flex gap-3 w-full">
+                <button 
+                  onClick={() => setShowDeptAlert(false)}
+                  className="flex-1 py-2.5 rounded-xl font-semibold text-sm bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowDeptAlert(false);
+                    setLoginType('department');
+                  }}
+                  className="flex-1 py-2.5 rounded-xl font-semibold text-sm bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                >
+                  Go to Department
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
