@@ -63,7 +63,7 @@
 
 @layer base {
   body {
-    @apply antialiased bg-background text-on-background min-h-screen flex flex-col font-body-md;
+    @apply antialiased bg-background text-on-background min-h-screen flex flex-col font-body-md overflow-x-hidden w-full;
   }
 }
 

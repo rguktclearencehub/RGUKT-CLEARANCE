@@ -822,8 +822,22 @@ export default function DepartmentDashboard() {
                   Congratulations! Your clearance application has been fully approved by all departments. You are now officially cleared.
                 </p>
                 
-                <div style="text-align: center; margin: 35px 0;">
-                  <a href="${studentDashboardUrl}" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2);">Download NDC Certification</a>
+                <div style="margin-top: 30px; padding: 22px; background-color: #f0fdf4; border: 1.5px dashed #86efac; border-radius: 12px; text-align: center;">
+                  <div style="display: inline-block; padding: 4px 12px; background-color: #dcfce7; border-radius: 20px; font-size: 11px; font-weight: 700; color: #166534; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.5px;">
+                    Official Certificate Available
+                  </div>
+                  <h4 style="margin: 0 0 6px 0; color: #0f172a; font-size: 16px; font-weight: 700;">No Due Certificate (NDC)</h4>
+                  <p style="margin: 0 0 16px 0; color: #64748b; font-size: 13px; line-height: 1.5;">
+                    Your official university No Due Certificate is now ready. You can present this for your graduation and alumni procedures.
+                  </p>
+                  <div>
+                    <a href="${studentDashboardUrl}" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 10px rgba(22, 163, 74, 0.25);">
+                      ⬇ Download NDC Certificate
+                    </a>
+                  </div>
+                  <p style="color: #94a3b8; font-size: 11px; margin: 10px 0 0 0;">
+                    (Click the button above to login to your dashboard and download your certificate)
+                  </p>
                 </div>
               </div>
               <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">

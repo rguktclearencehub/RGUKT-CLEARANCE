@@ -688,7 +688,7 @@ export default function StudentDashboard() {
         )}
 
         {/* Page Content */}
-        <main className="flex-1 p-8 max-w-[1440px] mx-auto w-full overflow-hidden">
+        <main className="flex-1 p-4 md:p-6 lg:p-8 max-w-[1440px] mx-auto w-full overflow-x-hidden">
           <div key={activeTab} className="animate-in fade-in slide-in-from-right-8 duration-500 fill-mode-both">
           {activeTab === 'dashboard' && (
             <>

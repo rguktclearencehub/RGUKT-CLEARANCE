@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
 import { collection, getDocs, getDoc, doc, updateDoc, query, where } from 'firebase/firestore';
-import { LogOut, Search, ShieldAlert, CheckCircle, Clock, AlertTriangle, RefreshCcw, UserCheck, ShieldCheck, LayoutDashboard, Settings, Book, Building, Dumbbell, Briefcase, FlaskConical, Microscope, Monitor, Award, UserCog, CheckSquare, X, CheckCircle2, AlertCircle, Lock, Mail, FileText } from 'lucide-react';
+import { LogOut, Search, ShieldAlert, CheckCircle, Clock, AlertTriangle, RefreshCcw, UserCheck, ShieldCheck, LayoutDashboard, Settings, Book, Building, Dumbbell, Briefcase, FlaskConical, Microscope, Monitor, Award, UserCog, CheckSquare, XSquare, X, CheckCircle2, AlertCircle, Lock, Mail, FileText } from 'lucide-react';
 import Bubbles from '../components/Bubbles';
 import emailjs from '@emailjs/browser';
 import {
@@ -147,6 +147,44 @@ const MOCK_FO_DUES_TEMPLATE = `
     <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
       <p style="color: #94a3b8; font-size: 12px; margin: 0;">
         RGUKT Clearance Hub<br>
+        This is an automated message, please do not reply.
+      </p>
+    </div>
+  </div>
+`;
+
+const MOCK_COMPLETION_TEMPLATE = `
+  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f9fafb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+    <div style="background: linear-gradient(135deg, #16a34a, #15803d); padding: 30px 20px; text-align: center;">
+      <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Clearance Application Completed!</h1>
+    </div>
+    <div style="padding: 30px; background-color: white;">
+      <p style="color: #334155; font-size: 16px; margin-bottom: 20px;">Dear <strong>Sriram Yaddanapudi</strong>,</p>
+      <p style="color: #334155; font-size: 16px; margin-bottom: 25px; line-height: 1.6;">
+        Congratulations! Your clearance application has been fully approved by all departments. You are now officially cleared.
+      </p>
+      
+      <div style="margin-top: 30px; padding: 22px; background-color: #f0fdf4; border: 1.5px dashed #86efac; border-radius: 12px; text-align: center;">
+        <div style="display: inline-block; padding: 4px 12px; background-color: #dcfce7; border-radius: 20px; font-size: 11px; font-weight: 700; color: #166534; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.5px;">
+          Official Certificate Available
+        </div>
+        <h4 style="margin: 0 0 6px 0; color: #0f172a; font-size: 16px; font-weight: 700;">No Due Certificate (NDC)</h4>
+        <p style="margin: 0 0 16px 0; color: #64748b; font-size: 13px; line-height: 1.5;">
+          Your official university No Due Certificate is now ready. You can present this for your graduation and alumni procedures.
+        </p>
+        <div>
+          <a href="#" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 10px rgba(22, 163, 74, 0.25);">
+            ⬇ Download NDC Certificate
+          </a>
+        </div>
+        <p style="color: #94a3b8; font-size: 11px; margin: 10px 0 0 0;">
+          (Click the button above to login to your dashboard and download your certificate)
+        </p>
+      </div>
+    </div>
+    <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+      <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+        RGUKT Clearance Hub &copy; 2026<br>
         This is an automated message, please do not reply.
       </p>
     </div>
@@ -649,50 +687,39 @@ export default function AdminDashboard() {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-8 max-w-[1440px] mx-auto w-full overflow-hidden">
+        <main className="flex-1 p-4 md:p-6 lg:p-8 max-w-[1440px] mx-auto w-full overflow-x-hidden">
           <div className="animate-in fade-in slide-in-from-right-8 duration-500 fill-mode-both space-y-8">
             
             {activeTab === 'dashboard' && (
               <>
-                {/* Stats Container (Forced Horizontal) */}
-                <section className="flex flex-row w-full gap-4 overflow-x-auto pb-2">
-                  <div className="flex-1 min-w-[240px] bg-surface-container-lowest rounded-3xl border border-surface-variant shadow-sm p-6 flex flex-col justify-between h-32 relative overflow-hidden transition-all hover:-translate-y-1 hover:shadow-md">
+                {/* Stats Container */}
+                <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 w-full pb-2">
+                  <div className="bg-surface-container-lowest rounded-3xl border border-surface-variant shadow-sm p-6 flex flex-col justify-between h-32 relative overflow-hidden transition-all hover:-translate-y-1 hover:shadow-md">
                     <p className="text-xs font-label-md text-outline uppercase">Total Requests</p>
-                    <div className="flex items-end justify-between relative z-10">
-                      <span className="text-4xl font-headline-lg font-bold text-primary">{stats.total}</span>
-                      <div className="w-10 h-10 rounded-full bg-surface-variant/30 flex items-center justify-center">
-                        <UserCheck className="h-5 w-5 text-primary" />
-                      </div>
+                    <h2 className="text-4xl font-headline-lg font-bold text-on-surface">{stats.total}</h2>
+                    <div className="absolute top-0 right-0 w-16 h-16 bg-blue-50 rounded-bl-full flex items-center justify-center translate-x-2 -translate-y-2">
+                      <LayoutDashboard className="w-6 h-6 text-blue-500 translate-y-1 -translate-x-1" />
                     </div>
                   </div>
-                  
-                  <div className="flex-1 min-w-[240px] bg-surface-container-lowest rounded-3xl border border-surface-variant shadow-sm p-6 flex flex-col justify-between h-32 relative overflow-hidden transition-all hover:-translate-y-1 hover:shadow-md">
-                    <p className="text-xs font-label-md text-outline uppercase">Fully Approved</p>
-                    <div className="flex items-end justify-between relative z-10">
-                      <span className="text-4xl font-headline-lg font-bold text-green-600">{stats.approved}</span>
-                      <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
-                        <CheckCircle className="h-5 w-5 text-green-600" />
-                      </div>
+                  <div className="bg-surface-container-lowest rounded-3xl border border-surface-variant shadow-sm p-6 flex flex-col justify-between h-32 relative overflow-hidden transition-all hover:-translate-y-1 hover:shadow-md">
+                    <p className="text-xs font-label-md text-outline uppercase">Approved</p>
+                    <h2 className="text-4xl font-headline-lg font-bold text-green-600">{stats.approved}</h2>
+                    <div className="absolute top-0 right-0 w-16 h-16 bg-green-50 rounded-bl-full flex items-center justify-center translate-x-2 -translate-y-2">
+                      <CheckSquare className="w-6 h-6 text-green-500 translate-y-1 -translate-x-1" />
                     </div>
                   </div>
-                  
-                  <div className="flex-1 min-w-[240px] bg-surface-container-lowest rounded-3xl border border-surface-variant shadow-sm p-6 flex flex-col justify-between h-32 relative overflow-hidden transition-all hover:-translate-y-1 hover:shadow-md">
+                  <div className="bg-surface-container-lowest rounded-3xl border border-surface-variant shadow-sm p-6 flex flex-col justify-between h-32 relative overflow-hidden transition-all hover:-translate-y-1 hover:shadow-md">
                     <p className="text-xs font-label-md text-outline uppercase">Pending</p>
-                    <div className="flex items-end justify-between relative z-10">
-                      <span className="text-4xl font-headline-lg font-bold text-amber-600">{stats.pending}</span>
-                      <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center">
-                        <Clock className="h-5 w-5 text-amber-600" />
-                      </div>
+                    <h2 className="text-4xl font-headline-lg font-bold text-orange-500">{stats.pending}</h2>
+                    <div className="absolute top-0 right-0 w-16 h-16 bg-orange-50 rounded-bl-full flex items-center justify-center translate-x-2 -translate-y-2">
+                      <Clock className="w-6 h-6 text-orange-400 translate-y-1 -translate-x-1" />
                     </div>
                   </div>
-                  
-                  <div className="flex-1 min-w-[240px] bg-surface-container-lowest rounded-3xl border border-surface-variant shadow-sm p-6 flex flex-col justify-between h-32 relative overflow-hidden transition-all hover:-translate-y-1 hover:shadow-md">
+                  <div className="bg-surface-container-lowest rounded-3xl border border-surface-variant shadow-sm p-6 flex flex-col justify-between h-32 relative overflow-hidden transition-all hover:-translate-y-1 hover:shadow-md">
                     <p className="text-xs font-label-md text-outline uppercase">Rejected</p>
-                    <div className="flex items-end justify-between relative z-10">
-                      <span className="text-4xl font-headline-lg font-bold text-error">{stats.rejected}</span>
-                      <div className="w-10 h-10 rounded-full bg-error-container flex items-center justify-center">
-                        <AlertTriangle className="h-5 w-5 text-on-error-container" />
-                      </div>
+                    <h2 className="text-4xl font-headline-lg font-bold text-red-500">{stats.rejected}</h2>
+                    <div className="absolute top-0 right-0 w-16 h-16 bg-red-50 rounded-bl-full flex items-center justify-center translate-x-2 -translate-y-2">
+                      <XSquare className="w-6 h-6 text-red-400 translate-y-1 -translate-x-1" />
                     </div>
                   </div>
                 </section>
@@ -847,6 +874,22 @@ export default function AdminDashboard() {
                     <div className="flex-1 bg-surface-container-lowest rounded-xl border border-outline-variant/30 overflow-hidden shadow-inner p-4 flex items-center justify-center">
                       <div className="w-full max-w-md scale-[0.8] origin-top h-[600px] overflow-y-auto no-scrollbar shadow-xl rounded-xl border border-surface-variant"
                            dangerouslySetInnerHTML={{ __html: MOCK_FO_DUES_TEMPLATE }}>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Application Completed Template */}
+                  <div className="bg-surface rounded-2xl border border-surface-variant p-6 flex flex-col">
+                    <h4 className="font-headline-sm text-lg font-bold text-primary mb-2 flex items-center gap-2">
+                      <Award className="w-5 h-5 text-secondary-container" />
+                      Application Completed
+                    </h4>
+                    <p className="font-body-sm text-on-surface-variant mb-6 text-sm">
+                      Sent automatically when all departments have fully approved the clearance request. Includes NDC download option.
+                    </p>
+                    <div className="flex-1 bg-surface-container-lowest rounded-xl border border-outline-variant/30 overflow-hidden shadow-inner p-4 flex items-center justify-center">
+                      <div className="w-full max-w-md scale-[0.8] origin-top h-[600px] overflow-y-auto no-scrollbar shadow-xl rounded-xl border border-surface-variant"
+                           dangerouslySetInnerHTML={{ __html: MOCK_COMPLETION_TEMPLATE }}>
                       </div>
                     </div>
                   </div>
