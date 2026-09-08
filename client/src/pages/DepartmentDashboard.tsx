@@ -2,9 +2,9 @@ import { useEffect, useState, useRef } from 'react';
 import { db } from '../firebase';
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, setDoc, limit, increment, deleteDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FileText, Settings, LogOut, Search, Bell, CheckCircle2, AlertCircle, Clock, ShieldCheck, CheckSquare, Printer, Building2, FlaskConical, BookOpen, Monitor, GraduationCap, Briefcase, Dumbbell, Award, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, Settings, LogOut, Search, Bell, CheckCircle2, AlertCircle, Clock, ShieldCheck, CheckSquare, Printer, Building2, FlaskConical, BookOpen, Monitor, GraduationCap, Briefcase, Dumbbell, Award, ClipboardList, ChevronLeft, Wrench } from 'lucide-react';
 import emailjs from '@emailjs/browser';
-import { generateDuesPdfBlob, uploadToGoogleDrive, getDriveDownloadLink, getDrivePreviewLink, fetchDetailedStudentDues, downloadPdfDirectly, type DepartmentDuesGroup } from '../utils/pdfGenerator';
+import { generateDuesPdfBlob, generateNDCPdfBlob, uploadToGoogleDrive, uploadNdcToDrive, getDriveDownloadLink, getDrivePreviewLink, convertDriveShareableToDownloadUrl, fetchDetailedStudentDues, downloadPdfDirectly, type DepartmentDuesGroup } from '../utils/pdfGenerator';
 
 const getDepartmentIcon = (deptName: string | null) => {
   if (!deptName) return Building2;
@@ -48,6 +48,7 @@ export default function DepartmentDashboard() {
   const [feeAmount, setFeeAmount] = useState('');
   const [maintenanceFee, setMaintenanceFee] = useState('');
   const [referenceId, setReferenceId] = useState('');
+  const [isUpdatingRef, setIsUpdatingRef] = useState(false);
   const [fetchedFee, setFetchedFee] = useState<number | null>(null);
   const [fetchedPenalties, setFetchedPenalties] = useState<any[] | null>(null);
   const [fetchedAllDeptDues, setFetchedAllDeptDues] = useState<DepartmentDuesGroup[] | null>(null);
@@ -68,8 +69,12 @@ export default function DepartmentDashboard() {
   const [selectedHostelView, setSelectedHostelView] = useState<string | null>(null);
   const [wardenName, setWardenName] = useState('');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  
+  const [selectedBranchLab, setSelectedBranchLab] = useState<string | null>(null);
+  const [isEnggLabsProxy, setIsEnggLabsProxy] = useState(false);
+
   const isHostelWarden = departmentName === 'Boys Hostel' || departmentName === 'Girls Hostel';
-  const isLabDept = ['Physics Lab', 'Chemistry Lab', 'Biology Lab'].includes(departmentName);
+  const isLabDept = ['Physics Lab', 'Chemistry Lab', 'Biology Lab'].includes(departmentName) || departmentName.startsWith('Lab Technician');
 
   // COE Academic Status Check state
   const [showAcademicModal, setShowAcademicModal] = useState(false);
@@ -331,7 +336,7 @@ export default function DepartmentDashboard() {
     setRemarks('');
     setFeeAmount('');
     setMaintenanceFee('');
-    setReferenceId('');
+    setReferenceId(c.paymentReferenceId || c.referenceId || '');
     setIsDuesAdded(false);
     setIsAddingDues(false);
     if (c.academicStatus) {
@@ -402,7 +407,14 @@ export default function DepartmentDashboard() {
     courseType?: string | null
   ) => {
     const isBTech = programType === 'B.Tech';
-    const base = isBTech ? BTECH_DEPARTMENTS : PUC_DEPARTMENTS;
+    let base = isBTech ? BTECH_DEPARTMENTS : PUC_DEPARTMENTS;
+    if (isBTech) {
+      base = base.map(dept => {
+        if (dept === 'HOD') return `HOD ${courseType || ''}`.trim();
+        if (dept === 'Engg Labs') return `Lab Technician ${courseType || ''}`.trim();
+        return dept;
+      });
+    }
     const isMpc = pucCourseType === 'MPC' || (!isBTech && courseType === 'MPC');
     return base.filter(d => !(isMpc && d === 'Biology Lab'));
   };
@@ -475,6 +487,7 @@ export default function DepartmentDashboard() {
     const exactName = getExactDeptName(user);
     setDepartmentName(exactName);
     setWardenName(user.wardenName || '');
+    if (exactName === 'Engg Labs') setIsEnggLabsProxy(true);
 
     fetchClearances(exactName);
 
@@ -527,6 +540,8 @@ export default function DepartmentDashboard() {
                       ...data,
                       student: studentDetails,
                       totalFeeDue: crSnap.data().totalFeeDue || 0,
+                      feeReceiptUrl: crSnap.data().feeReceiptUrl || null,
+                      paymentReferenceId: crSnap.data().paymentReferenceId || data.paymentReferenceId || data.referenceId || null,
                       presentHostel: crSnap.data().presentHostel || null,
                       programType: crSnap.data().programType || crSnap.data().program || studentDetails.program || 'PUC',
                       courseType: crSnap.data().courseType || null,
@@ -617,6 +632,7 @@ export default function DepartmentDashboard() {
             student: studentDetails,
             totalFeeDue: crSnap.data().totalFeeDue || 0,
             feeReceiptUrl: crSnap.data().feeReceiptUrl || null,
+            paymentReferenceId: crSnap.data().paymentReferenceId || data.paymentReferenceId || data.referenceId || null,
             presentHostel: crSnap.data().presentHostel || null,
             programType: crSnap.data().programType || crSnap.data().program || studentDetails.program || 'PUC',
             courseType: crSnap.data().courseType || null,
@@ -651,7 +667,7 @@ export default function DepartmentDashboard() {
       return;
     }
 
-    const currentDisplayDue = isDuesAdded ? Number(feeAmount) : 0;
+    const currentDisplayDue = (isDuesAdded ? Number(feeAmount) : 0) || Number(selectedClearance.totalFeeDue) || 0;
     if (actType === 'APPROVE' && departmentName === 'FO' && currentDisplayDue > 0 && !referenceId.trim()) {
       alert("Please enter the Payment Reference ID to approve this request.");
       return;
@@ -674,6 +690,12 @@ export default function DepartmentDashboard() {
         remarks: remarks || '',
         updatedAt: new Date().toISOString()
       };
+      if (departmentName === 'FO' && referenceId.trim()) {
+        dcUpdateData.paymentReferenceId = referenceId.trim();
+        dcUpdateData.referenceId = referenceId.trim();
+        dcUpdateData.feeDue = 0;
+        dcUpdateData.status_fee = 'PAID';
+      }
       if (departmentName === 'COE' && coeAcademicCheck) {
         dcUpdateData.academicStatus = coeAcademicCheck.hasRemedial ? 'REMEDIAL' : 'PASSED';
         dcUpdateData.remedialSemesters = coeAcademicCheck.remedialSemesters || [];
@@ -682,7 +704,7 @@ export default function DepartmentDashboard() {
       if (user && user.wardenName) {
         dcUpdateData.handledBy = user.wardenName;
       }
-      if (feeNum > 0) {
+      if (feeNum > 0 && departmentName !== 'FO') {
         dcUpdateData.feeDue = feeNum;
         if (maintFee > 0) dcUpdateData.maintenanceFee = maintFee;
         if (fetchedPenalties && fetchedPenalties.length > 0) {
@@ -745,13 +767,19 @@ export default function DepartmentDashboard() {
         crUpdateData.status = 'APPROVED';
       }
 
-      if (feeNum > 0 && newStatus === 'APPROVED') {
+      if (feeNum > 0 && newStatus === 'APPROVED' && departmentName !== 'FO') {
         crUpdateData.totalFeeDue = increment(feeNum);
       }
 
       if (departmentName === 'FO' && newStatus === 'APPROVED') {
-        if (referenceId.trim()) crUpdateData.paymentReferenceId = referenceId;
+        const cleanRef = referenceId.trim();
+        if (cleanRef) {
+          crUpdateData.paymentReferenceId = cleanRef;
+          dcUpdateData.paymentReferenceId = cleanRef;
+          dcUpdateData.referenceId = cleanRef;
+        }
         crUpdateData.totalFeeDue = 0;
+        crUpdateData.duesCleared = true;
         
         // Update departmentClearances
         const dcQuery = query(collection(db, 'departmentClearances'), where('requestId', '==', selectedClearance.requestId));
@@ -807,19 +835,63 @@ export default function DepartmentDashboard() {
       
       await updateDoc(crRef, crUpdateData);
       
-      // Send final completion email to student
+      // Send final completion email to student with auto-generated NDC PDF on Google Drive
       if (newStatus === 'APPROVED' && isLast) {
         try {
-          const studentDashboardUrl = 'https://rguktclearance.vercel.app/login';
+          const studentName = selectedClearance.student?.name || 'Student';
+          const studentId = selectedClearance.student?.studentId || '';
+          const baseUrl = window.location.origin || 'https://rguktclearance.vercel.app';
+          const directFallbackUrl = `${baseUrl}/download-ndc?reqId=${selectedClearance.requestId}&studentId=${studentId}`;
+          
+          let ndcDownloadUrl = directFallbackUrl;
+          let driveFileId: string | null = null;
+          let driveShareableUrl: string | null = null;
+
+          try {
+            // Generate official vector NDC PDF
+            const ndcBlob = await generateNDCPdfBlob(
+              {
+                name: studentName,
+                studentId: studentId,
+                program: selectedClearance.student?.program || 'B.Tech',
+                department: selectedClearance.department || selectedClearance.student?.department,
+                hostel: selectedClearance.presentHostel || selectedClearance.student?.hostel
+              },
+              selectedClearance
+            );
+
+            // Upload NDC to Google Drive & convert to direct download URL
+            try {
+              const driveRes = await uploadNdcToDrive(ndcBlob, `${studentId}_Official_No_Due_Certificate.pdf`);
+              if (driveRes.downloadUrl) {
+                ndcDownloadUrl = driveRes.downloadUrl;
+                driveFileId = driveRes.fileId;
+                driveShareableUrl = driveRes.shareableUrl;
+              }
+            } catch (driveErr) {
+              console.warn('Google Drive auto-upload warning:', driveErr);
+            }
+
+            // Save NDC details in Firestore
+            await updateDoc(crRef, {
+              ndcDownloadUrl,
+              ndcDriveFileId: driveFileId || null,
+              ndcDriveUrl: driveShareableUrl || null,
+              ndcGeneratedAt: new Date().toISOString()
+            }).catch(e => console.warn('Could not store ndcDownloadUrl in clearanceRequests:', e));
+          } catch (pdfErr) {
+            console.error('Failed to generate NDC PDF blob:', pdfErr);
+          }
+
           const htmlMessage = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f9fafb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
               <div style="background: linear-gradient(135deg, #16a34a, #15803d); padding: 30px 20px; text-align: center;">
                 <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Clearance Application Completed!</h1>
               </div>
               <div style="padding: 30px; background-color: white;">
-                <p style="color: #334155; font-size: 16px; margin-bottom: 20px;">Dear <strong>${selectedClearance.student?.name}</strong>,</p>
+                <p style="color: #334155; font-size: 16px; margin-bottom: 20px;">Dear <strong>${studentName}</strong>,</p>
                 <p style="color: #334155; font-size: 16px; margin-bottom: 25px; line-height: 1.6;">
-                  Congratulations! Your clearance application has been fully approved by all departments. You are now officially cleared.
+                  Congratulations! Your clearance application has been fully approved by all departments. You are now officially cleared with zero dues.
                 </p>
                 
                 <div style="margin-top: 30px; padding: 22px; background-color: #f0fdf4; border: 1.5px dashed #86efac; border-radius: 12px; text-align: center;">
@@ -828,16 +900,23 @@ export default function DepartmentDashboard() {
                   </div>
                   <h4 style="margin: 0 0 6px 0; color: #0f172a; font-size: 16px; font-weight: 700;">No Due Certificate (NDC)</h4>
                   <p style="margin: 0 0 16px 0; color: #64748b; font-size: 13px; line-height: 1.5;">
-                    Your official university No Due Certificate is now ready. You can present this for your graduation and alumni procedures.
+                    Your official university No Due Certificate is now ready. Click the button below to download your official PDF directly.
                   </p>
                   <div>
-                    <a href="${studentDashboardUrl}" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 10px rgba(22, 163, 74, 0.25);">
+                    <a href="${ndcDownloadUrl}" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 14px 30px; border-radius: 8px; font-weight: 700; font-size: 15px; box-shadow: 0 4px 10px rgba(22, 163, 74, 0.25);">
                       ⬇ Download NDC Certificate
                     </a>
                   </div>
                   <p style="color: #94a3b8; font-size: 11px; margin: 10px 0 0 0;">
-                    (Click the button above to login to your dashboard and download your certificate)
+                    (Click the button above to directly download your official certificate)
                   </p>
+                  ${driveShareableUrl ? `
+                  <p style="margin-top: 10px; font-size: 11px;">
+                    <a href="${driveShareableUrl}" target="_blank" style="color: #2563eb; text-decoration: underline;">
+                      Preview on Google Drive
+                    </a>
+                  </p>
+                  ` : ''}
                 </div>
               </div>
               <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
@@ -853,13 +932,13 @@ export default function DepartmentDashboard() {
             EMAILJS_SERVICE_ID,
             EMAILJS_TEMPLATE_ID,
             {
-              to_name: selectedClearance.student?.name || 'Student',
+              to_name: studentName,
               to_email: selectedClearance.student?.email,
               html_message: htmlMessage
             },
             EMAILJS_PUBLIC_KEY
           );
-          console.log('Final completion email sent to student!');
+          console.log('Final completion email sent to student with direct NDC download link!');
         } catch (emailErr) {
           console.error('Failed to send final completion EmailJS notification:', emailErr);
         }
@@ -885,6 +964,56 @@ export default function DepartmentDashboard() {
       console.error(e);
       setIsConfirming(false);
       alert('Action failed. Please try again.');
+    }
+  };
+
+  const handleUpdateFoReferenceId = async () => {
+    if (!selectedClearance || !referenceId.trim()) {
+      alert("Please enter a valid Transaction / Reference ID.");
+      return;
+    }
+    setIsUpdatingRef(true);
+    try {
+      const cleanRef = referenceId.trim();
+      const dcRef = doc(db, 'departmentClearances', selectedClearance.id);
+      await updateDoc(dcRef, {
+        paymentReferenceId: cleanRef,
+        referenceId: cleanRef,
+        feeDue: 0,
+        status_fee: 'PAID',
+        updatedAt: new Date().toISOString()
+      });
+
+      if (selectedClearance.requestId) {
+        const crRef = doc(db, 'clearanceRequests', selectedClearance.requestId);
+        await updateDoc(crRef, {
+          paymentReferenceId: cleanRef,
+          totalFeeDue: 0,
+          duesCleared: true,
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      setSelectedClearance((prev: any) => ({
+        ...prev,
+        paymentReferenceId: cleanRef,
+        referenceId: cleanRef,
+        totalFeeDue: 0
+      }));
+
+      setClearances((curr: any[]) => curr.map((c: any) => c.id === selectedClearance.id ? {
+        ...c,
+        paymentReferenceId: cleanRef,
+        referenceId: cleanRef,
+        totalFeeDue: 0
+      } : c));
+
+      alert("Transaction ID updated successfully!");
+    } catch (e) {
+      console.error(e);
+      alert("Failed to update Transaction ID");
+    } finally {
+      setIsUpdatingRef(false);
     }
   };
 
@@ -1177,7 +1306,7 @@ export default function DepartmentDashboard() {
                   </p>
                 </div>
                 <div style="text-align: center;">
-                  <a href="https://rguktclearance.vercel.app/" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">Upload Receipt</a>
+                  <a href="https://rguktclearance.vercel.app/student/dashboard" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">Upload Receipt</a>
                 </div>
                 ${pdfLinkHtml}
               </div>
@@ -1281,16 +1410,31 @@ export default function DepartmentDashboard() {
           </div>
           <h1 className="font-headline-sm text-lg font-bold text-surface-container-lowest text-center">RGUKT CLEARANCE HUB</h1>
           <p className="font-label-sm text-on-primary-container mt-1">Department Portal</p>
+          {isEnggLabsProxy && selectedBranchLab && (
+            <button
+              onClick={() => {
+                setSelectedBranchLab(null);
+                setDepartmentName('Engg Labs');
+                setCurrentTab('requests');
+                fetchClearances('Engg Labs');
+              }}
+              className="mt-4 flex items-center justify-center gap-2 w-full py-2 bg-primary/20 rounded-lg text-sm font-bold text-blue-200 hover:text-white hover:bg-primary/40 transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" /> Back to Branches
+            </button>
+          )}
         </div>
         
         <nav className="flex-1 px-4 space-y-2">
-          <button 
-            onClick={() => setCurrentTab('requests')}
-            className={`w-full flex items-center gap-3 px-4 py-3 font-label-md transition-all duration-300 rounded-lg ${currentTab === 'requests' ? 'text-surface-container-lowest border-l-2 border-secondary-container bg-surface-variant/10 rounded-l-none rounded-r-lg' : 'text-on-primary-container/70 hover:bg-surface-variant/20 hover:text-surface-container-lowest'}`}
-          >
-            <LayoutDashboard className="w-5 h-5" />
-            Requests
-          </button>
+          {!isEnggLabsProxy && (
+            <button 
+              onClick={() => setCurrentTab('requests')}
+              className={`w-full flex items-center gap-3 px-4 py-3 font-label-md transition-all duration-300 rounded-lg ${currentTab === 'requests' ? 'text-surface-container-lowest border-l-2 border-secondary-container bg-surface-variant/10 rounded-l-none rounded-r-lg' : 'text-on-primary-container/70 hover:bg-surface-variant/20 hover:text-surface-container-lowest'}`}
+            >
+              <LayoutDashboard className="w-5 h-5" />
+              Requests
+            </button>
+          )}
           
           {isHostelWarden && (
             <button 
@@ -1491,6 +1635,38 @@ export default function DepartmentDashboard() {
             <HostelPenaltyManager type="dsw" />
           ) : currentTab === 'hostelPenalty' ? (
             <HostelPenaltyManager type="hostel" />
+          ) : isEnggLabsProxy && !selectedBranchLab ? (
+            <>
+               <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h2 className="font-headline-lg text-3xl font-bold text-primary">Engineering Labs</h2>
+                  <p className="font-body-md text-on-surface-variant mt-1">Select a branch to manage and add lab penalties.</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {['AIML', 'CSE', 'ECE', 'EEE', 'CIVIL', 'CHE', 'ME', 'MME'].map(branch => (
+                  <button
+                    key={branch}
+                    onClick={() => {
+                      setSelectedBranchLab(branch);
+                      setDepartmentName(`Lab Technician ${branch}`);
+                      setCurrentTab('labPenalty');
+                    }}
+                    className="bg-surface rounded-2xl p-6 border border-surface-variant shadow-sm hover:shadow-md hover:border-primary/30 transition-all text-left group flex flex-col items-center text-center"
+                  >
+                    <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 mb-4 group-hover:scale-110 transition-transform shadow-inner border border-blue-100">
+                      <Wrench className="w-8 h-8" />
+                    </div>
+                    <h3 className="font-headline-sm text-xl font-bold text-on-surface mb-2">
+                      {branch}
+                    </h3>
+                    <p className="font-body-sm text-on-surface-variant text-sm">
+                      Manage and add lab penalties.
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </>
           ) : isHostelWarden && !selectedHostelView ? (
             <>
               <div className="flex items-center justify-between mb-8">
@@ -1714,7 +1890,7 @@ export default function DepartmentDashboard() {
                   </div>
                 )}
 
-                {['Boys Hostel', 'Girls Hostel', 'DSW', 'Physics Lab', 'Chemistry Lab', 'Biology Lab', 'Library', 'IT Infra', 'FO'].includes(departmentName) && (
+                {(['Boys Hostel', 'Girls Hostel', 'DSW', 'Library', 'IT Infra', 'FO'].includes(departmentName) || isLabDept) && (
                   <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/30 shadow-sm flex flex-col gap-4">
                     <div className="flex justify-between items-center gap-4">
                       <div className="flex-1 min-w-0">
@@ -2272,9 +2448,11 @@ export default function DepartmentDashboard() {
 
                 <div className="space-y-4">
                   {/* Payment Reference ID for FO if student has dues */}
-                  {departmentName === 'FO' && isDuesAdded && Number(feeAmount) > 0 && (
+                  {departmentName === 'FO' && (isDuesAdded || Number(feeAmount) > 0 || Number(selectedClearance.totalFeeDue) > 0 || Boolean(selectedClearance.feeReceiptUrl)) && (
                     <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 shadow-sm">
-                      <h5 className="font-bold text-amber-800 mb-1">Total Student Dues: ₹{feeAmount}</h5>
+                      <h5 className="font-bold text-amber-800 mb-1">
+                        Total Student Dues: ₹{(isDuesAdded && Number(feeAmount) > 0 ? Number(feeAmount) : (Number(selectedClearance.totalFeeDue) || 0)).toLocaleString('en-IN')}
+                      </h5>
                       <p className="text-xs text-amber-700 mb-3">The student must pay this accumulated amount before clearance is granted.</p>
                       {selectedClearance.feeReceiptUrl && (
                         <div className="mb-4">
@@ -2290,12 +2468,12 @@ export default function DepartmentDashboard() {
                       )}
                       <label className="block font-label-md text-amber-900 mb-2 font-bold text-sm">Payment Reference ID <span className="text-red-500">*</span></label>
                       <input 
-                        type="text"
+                        type="text" 
                         required
                         value={referenceId}
                         onChange={e => setReferenceId(e.target.value)}
                         placeholder="e.g. TXN-123456789"
-                        className="w-full border border-amber-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none bg-white"
+                        className="w-full border border-amber-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none bg-white font-mono"
                       />
                     </div>
                   )}
@@ -2338,7 +2516,7 @@ export default function DepartmentDashboard() {
                       isConfirming || 
                       isConfirmed || 
                       (departmentName === 'COE' && coeAcademicCheck?.hasRemedial) ||
-                      (departmentName === 'FO' && isDuesAdded && Number(feeAmount) > 0 && !referenceId.trim())
+                      (departmentName === 'FO' && (((isDuesAdded && Number(feeAmount) > 0) || Number(selectedClearance.totalFeeDue) > 0)) && !referenceId.trim())
                     }
                     onClick={() => {
                       if (departmentName === 'COE') {
@@ -2352,7 +2530,7 @@ export default function DepartmentDashboard() {
                           return;
                         }
                       }
-                      const displayDueAmount = isDuesAdded ? Number(feeAmount) : 0;
+                      const displayDueAmount = (isDuesAdded ? Number(feeAmount) : 0) || Number(selectedClearance.totalFeeDue) || 0;
                       if (departmentName === 'FO' && displayDueAmount > 0 && !referenceId.trim()) {
                         alert("Please enter the Payment Reference ID to approve this request.");
                         return;
@@ -2360,7 +2538,7 @@ export default function DepartmentDashboard() {
                       setShowConfirmPopup(true);
                     }} 
                     className={`flex-1 text-white py-3.5 rounded-xl font-label-md font-semibold transition-all duration-300 flex items-center justify-center gap-2 shadow-sm ${
-                      (departmentName === 'COE' && coeAcademicCheck?.hasRemedial) || (departmentName === 'FO' && isDuesAdded && Number(feeAmount) > 0 && !referenceId.trim())
+                      (departmentName === 'COE' && coeAcademicCheck?.hasRemedial) || (departmentName === 'FO' && (((isDuesAdded && Number(feeAmount) > 0) || Number(selectedClearance.totalFeeDue) > 0)) && !referenceId.trim())
                         ? 'bg-gray-400 cursor-not-allowed opacity-60'
                         : isConfirmed && actionType === 'APPROVE' ? 'bg-green-500' : 'bg-green-600 hover:bg-green-700'
                     } disabled:opacity-80`}
@@ -2378,7 +2556,51 @@ export default function DepartmentDashboard() {
             )}
 
             {selectedClearance.status === 'APPROVED' && (
-              <div className="mt-2">
+              <div className="mt-2 space-y-3">
+                {departmentName === 'FO' && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 shadow-sm mb-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-bold text-xs text-emerald-800 uppercase tracking-wide flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Dues Cleared & Verified
+                      </span>
+                      <span className="text-[10px] bg-emerald-200 text-emerald-800 font-bold px-2.5 py-0.5 rounded-full">
+                        Approved
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 text-xs">
+                      <div className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-emerald-200">
+                        <span className="text-slate-600 font-medium">Recorded Txn ID:</span>
+                        <span className="font-mono font-bold text-blue-800">
+                          {selectedClearance.paymentReferenceId || selectedClearance.referenceId || 'None'}
+                        </span>
+                      </div>
+                      
+                      <div className="pt-2 border-t border-emerald-200/70">
+                        <label className="block text-[11px] font-bold text-emerald-900 mb-1">
+                          Update Transaction / Ref ID:
+                        </label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            value={referenceId}
+                            onChange={e => setReferenceId(e.target.value)}
+                            placeholder="Enter updated Txn ID..."
+                            className="flex-1 bg-white border border-emerald-300 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleUpdateFoReferenceId}
+                            disabled={isUpdatingRef || !referenceId.trim()}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-50 flex items-center gap-1 shadow-xs cursor-pointer"
+                          >
+                            {isUpdatingRef ? 'Updating...' : 'Update ID'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {(() => {
                   const currentSequence = getDepartmentSequence(
                     selectedClearance.programType || selectedClearance.student?.program,

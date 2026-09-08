@@ -1,4 +1,7 @@
-import { Printer, X } from 'lucide-react';
+import { useState } from 'react';
+import { Printer, X, Download, CloudUpload } from 'lucide-react';
+import { generateNDCPdfBlob, downloadPdfDirectly, uploadNdcToDrive } from '../utils/pdfGenerator';
+import DriveUploadModal from './DriveUploadModal';
 
 interface NoDueCertificateProps {
   student: {
@@ -6,11 +9,18 @@ interface NoDueCertificateProps {
     studentId: string;
     program: string;
     department?: string;
+    hostel?: string;
   };
   onClose: () => void;
 }
 
 export default function NoDueCertificate({ student, onClose }: NoDueCertificateProps) {
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [driveModalOpen, setDriveModalOpen] = useState(false);
+  const [driveUploadStatus, setDriveUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
+  const [driveShareableUrl, setDriveShareableUrl] = useState<string | null>(null);
+  const [driveErrorMessage, setDriveErrorMessage] = useState<string | null>(null);
+
   const currentDate = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
@@ -21,22 +31,66 @@ export default function NoDueCertificate({ student, onClose }: NoDueCertificateP
     window.print();
   };
 
+  const handleDownloadPdf = async () => {
+    try {
+      setIsDownloading(true);
+      const blob = await generateNDCPdfBlob(student);
+      downloadPdfDirectly(blob, `${student.studentId}_Official_No_Due_Certificate.pdf`);
+    } catch (err: any) {
+      console.error(err);
+      alert('Failed to generate PDF: ' + (err.message || err));
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleSaveToDrive = async () => {
+    setDriveModalOpen(true);
+    setDriveUploadStatus('uploading');
+    setDriveErrorMessage(null);
+    setDriveShareableUrl(null);
+    try {
+      const blob = await generateNDCPdfBlob(student);
+      const res = await uploadNdcToDrive(blob, `${student.studentId}_Official_No_Due_Certificate.pdf`);
+      setDriveShareableUrl(res.shareableUrl || null);
+      setDriveUploadStatus('success');
+    } catch (err: any) {
+      console.error('Failed to save to Google Drive:', err);
+      setDriveErrorMessage(err.message || 'Failed to save certificate to Google Drive.');
+      setDriveUploadStatus('error');
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-primary/40 backdrop-blur-sm flex items-start sm:items-center justify-center p-4 z-[200] print:bg-white print:p-0 overflow-y-auto">
       
       {/* Non-printable controls */}
-      <div className="fixed top-4 right-4 sm:top-6 sm:right-6 flex gap-3 print:hidden z-[210]">
+      <div className="fixed top-4 right-4 sm:top-6 sm:right-6 flex flex-wrap gap-2 sm:gap-3 print:hidden z-[210]">
+        <button
+          onClick={handleDownloadPdf}
+          disabled={isDownloading}
+          className="bg-emerald-600 text-white px-3.5 py-2 sm:px-5 sm:py-2 rounded-full font-bold shadow-lg flex items-center gap-1.5 sm:gap-2 hover:bg-emerald-700 transition-colors text-xs sm:text-sm cursor-pointer disabled:opacity-60"
+        >
+          <Download className="w-4 h-4" /> {isDownloading ? 'Downloading...' : 'Download PDF'}
+        </button>
+        <button
+          onClick={handleSaveToDrive}
+          disabled={driveUploadStatus === 'uploading'}
+          className="bg-blue-600 text-white px-3.5 py-2 sm:px-5 sm:py-2 rounded-full font-bold shadow-lg flex items-center gap-1.5 sm:gap-2 hover:bg-blue-700 transition-colors text-xs sm:text-sm cursor-pointer disabled:opacity-60"
+        >
+          <CloudUpload className="w-4 h-4" /> {driveUploadStatus === 'uploading' ? 'Saving...' : 'Save to Drive'}
+        </button>
         <button 
           onClick={handlePrint}
-          className="bg-white text-primary px-4 py-2 sm:px-6 sm:py-2 rounded-full font-bold shadow-lg flex items-center gap-2 hover:bg-surface-variant transition-colors text-sm sm:text-base"
+          className="bg-white text-primary px-3.5 py-2 sm:px-5 sm:py-2 rounded-full font-bold shadow-lg flex items-center gap-1.5 sm:gap-2 hover:bg-surface-variant transition-colors text-xs sm:text-sm cursor-pointer"
         >
-          <Printer className="w-4 h-4 sm:w-5 sm:h-5" /> Print
+          <Printer className="w-4 h-4" /> Print
         </button>
         <button 
           onClick={onClose}
-          className="w-9 h-9 sm:w-10 sm:h-10 bg-white text-primary rounded-full shadow-lg flex items-center justify-center hover:bg-error hover:text-white transition-colors"
+          className="w-8 h-8 sm:w-10 sm:h-10 bg-white text-primary rounded-full shadow-lg flex items-center justify-center hover:bg-error hover:text-white transition-colors cursor-pointer"
         >
-          <X className="w-5 h-5 sm:w-6 sm:h-6" />
+          <X className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
       </div>
 
@@ -152,6 +206,17 @@ export default function NoDueCertificate({ student, onClose }: NoDueCertificateP
           }
         }
       `}} />
+
+      {/* Google Drive Upload Animated Modal */}
+      <DriveUploadModal
+        isOpen={driveModalOpen}
+        onClose={() => setDriveModalOpen(false)}
+        status={driveUploadStatus}
+        fileName={`${student.studentId}_Official_No_Due_Certificate.pdf`}
+        shareableUrl={driveShareableUrl}
+        errorMessage={driveErrorMessage}
+        onRetry={handleSaveToDrive}
+      />
     </div>
   );
 }

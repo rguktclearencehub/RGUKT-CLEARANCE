@@ -7,6 +7,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import Bubbles from './components/Bubbles';
 
 import DownloadDues from './pages/DownloadDues';
+import DownloadNdc from './pages/DownloadNdc';
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
         <Route path="/department/dashboard" element={<DepartmentDashboard />} />
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
         <Route path="/download-dues" element={<DownloadDues />} />
+        <Route path="/download-ndc" element={<DownloadNdc />} />
       </Routes>
     </Router>
     </>

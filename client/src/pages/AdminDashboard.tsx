@@ -2,16 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
 import { collection, getDocs, getDoc, doc, updateDoc, query, where } from 'firebase/firestore';
-import { LogOut, Search, ShieldAlert, CheckCircle, Clock, AlertTriangle, RefreshCcw, UserCheck, ShieldCheck, LayoutDashboard, Settings, Book, Building, Dumbbell, Briefcase, FlaskConical, Microscope, Monitor, Award, UserCog, CheckSquare, XSquare, X, CheckCircle2, AlertCircle, Lock, Mail, FileText } from 'lucide-react';
+import { LogOut, Search, ShieldAlert, CheckCircle, Clock, AlertTriangle, RefreshCcw, UserCheck, ShieldCheck, LayoutDashboard, Settings, Book, Building, Dumbbell, Briefcase, FlaskConical, Microscope, Monitor, Award, UserCog, CheckSquare, XSquare, X, CheckCircle2, AlertCircle, Lock, Mail, FileText, Download } from 'lucide-react';
 import Bubbles from '../components/Bubbles';
 import emailjs from '@emailjs/browser';
 import {
   generateDuesPdfBlob,
+  generateNDCPdfBlob,
   downloadPdfDirectly,
   fetchDetailedStudentDues,
   uploadToGoogleDrive,
+  uploadNdcToDrive,
   getDriveDownloadLink,
-  getDrivePreviewLink
+  getDrivePreviewLink,
+  convertDriveShareableToDownloadUrl
 } from '../utils/pdfGenerator';
 
 const EMAILJS_SERVICE_ID = 'service_yato66e';
@@ -32,9 +35,16 @@ const BTECH_DEPARTMENTS = [
 
 const getDepartmentSequence = (request: any) => {
   const isBTech = request?.programType === 'B.Tech';
-  const base = isBTech ? BTECH_DEPARTMENTS : PUC_DEPARTMENTS;
+  let base = isBTech ? BTECH_DEPARTMENTS : PUC_DEPARTMENTS;
+  if (isBTech) {
+    base = base.map(dept => {
+      if (dept === 'HOD') return `HOD ${request?.courseType || ''}`.trim();
+      if (dept === 'Engg Labs') return `Lab Technician ${request?.courseType || ''}`.trim();
+      return dept;
+    });
+  }
   const isMpc = request?.pucCourseType === 'MPC' || (!isBTech && request?.courseType === 'MPC');
-  return base.filter((d: string) => !(isMpc && d === 'Biology Lab'));
+  return base.filter(d => !(isMpc && d === 'Biology Lab'));
 };
 
 const MOCK_SUBMISSION_TEMPLATE = `
@@ -75,7 +85,7 @@ const MOCK_SUBMISSION_TEMPLATE = `
       </div>
       
       <div style="text-align: center; margin-top: 30px;">
-        <a href="https://rguktclearance.vercel.app/" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(22, 163, 74, 0.2);">Track Application Status</a>
+        <a href="https://rguktclearance.vercel.app/student/dashboard" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(22, 163, 74, 0.2);">Track Application Status</a>
       </div>
     </div>
     
@@ -141,7 +151,7 @@ const MOCK_FO_DUES_TEMPLATE = `
         </p>
       </div>
       <div style="text-align: center;">
-        <a href="https://rguktclearance.vercel.app/" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">Upload Receipt</a>
+        <a href="https://rguktclearance.vercel.app/student/dashboard" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">Upload Receipt</a>
       </div>
     </div>
     <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
@@ -173,12 +183,12 @@ const MOCK_COMPLETION_TEMPLATE = `
           Your official university No Due Certificate is now ready. You can present this for your graduation and alumni procedures.
         </p>
         <div>
-          <a href="#" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 10px rgba(22, 163, 74, 0.25);">
+          <a href="#" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 14px 30px; border-radius: 8px; font-weight: 700; font-size: 15px; box-shadow: 0 4px 10px rgba(22, 163, 74, 0.25);">
             ⬇ Download NDC Certificate
           </a>
         </div>
         <p style="color: #94a3b8; font-size: 11px; margin: 10px 0 0 0;">
-          (Click the button above to login to your dashboard and download your certificate)
+          (Click the button above to directly download your official certificate)
         </p>
       </div>
     </div>
@@ -383,6 +393,256 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleTestDownloadNdcPdf = async () => {
+    try {
+      const blob = await generateNDCPdfBlob({
+        name: 'Sriram Yaddanapudi',
+        studentId: 'R200001',
+        program: 'B.Tech (CSE)',
+        department: 'Computer Science & Engineering',
+        hostel: 'Campus Residence'
+      });
+      downloadPdfDirectly(blob, 'Sample_Official_RGUKT_No_Due_Certificate.pdf');
+    } catch (err: any) {
+      alert('Error generating test NDC PDF: ' + (err.message || err));
+    }
+  };
+
+  const [testMailModal, setTestMailModal] = useState<{
+    open: boolean;
+    templateType: 'submission' | 'fo_dues' | 'completed' | null;
+    title: string;
+  }>({
+    open: false,
+    templateType: null,
+    title: ''
+  });
+  const [selectedStudentRequestId, setSelectedStudentRequestId] = useState<string>('mock');
+  const [testRecipientEmail, setTestRecipientEmail] = useState('');
+  const [isSendingTestMail, setIsSendingTestMail] = useState(false);
+  const [testMailFeedback, setTestMailFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const handleOpenTestMail = (type: 'submission' | 'fo_dues' | 'completed', title: string) => {
+    setTestMailModal({ open: true, templateType: type, title });
+    setTestMailFeedback(null);
+  };
+
+  const handleSendTestMail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!testRecipientEmail || !testRecipientEmail.includes('@')) {
+      alert('Please enter a valid email address.');
+      return;
+    }
+
+    try {
+      setIsSendingTestMail(true);
+      setTestMailFeedback(null);
+
+      // Determine whether user selected a real student request or default sample
+      const targetReq = selectedStudentRequestId !== 'mock' ? requests.find(r => r.id === selectedStudentRequestId) : null;
+
+      const studentName = targetReq ? targetReq.studentName : (testMailModal.templateType === 'completed' ? 'Sriram Yaddanapudi' : 'John Doe');
+      const studentId = targetReq ? (targetReq.actualStudentId || targetReq.studentId) : (testMailModal.templateType === 'completed' ? 'R200001' : 'R240001');
+      const studentProgram = targetReq ? (targetReq.programType || 'B.Tech') : 'B.Tech';
+      const studentDept = targetReq ? (targetReq.department || (studentProgram.includes('PUC') ? 'Pre-University Course' : 'Computer Science & Engineering')) : 'Computer Science & Engineering';
+      const studentHostel = targetReq ? (targetReq.presentHostel || 'Campus Residence') : 'Campus Residence';
+
+      let htmlMessage = '';
+      let recipientName = studentName;
+
+      if (testMailModal.templateType === 'submission') {
+        htmlMessage = `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+            <div style="background: linear-gradient(135deg, #16a34a, #15803d); padding: 24px 20px; text-align: center; color: white;">
+              <h2 style="margin: 0; font-size: 24px; font-weight: 700;">Application Submitted!</h2>
+            </div>
+            <div style="padding: 30px;">
+              <p style="color: #334155; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
+                Hello <strong>${studentName}</strong>,<br><br>
+                Great news! Your clearance application has been successfully initiated and is now in the system.
+              </p>
+              <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                <p style="margin: 0 0 10px 0; color: #334155; font-size: 14px;"><strong>Student Name:</strong> ${studentName}</p>
+                <p style="margin: 0 0 10px 0; color: #334155; font-size: 14px;"><strong>Student ID:</strong> ${studentId}</p>
+                <p style="margin: 0 0 10px 0; color: #334155; font-size: 14px;"><strong>Program:</strong> ${studentProgram}</p>
+                <p style="margin: 0; color: #334155; font-size: 14px;"><strong>Submitted On:</strong> ${new Date().toLocaleString()}</p>
+              </div>
+              <div style="text-align: center; margin-top: 30px;">
+                <a href="https://rguktclearance.vercel.app/student/dashboard" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px;">Track Application Status</a>
+              </div>
+            </div>
+            <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+              <p style="color: #94a3b8; font-size: 12px; margin: 0;">RGUKT Clearance Hub &copy; ${new Date().getFullYear()}</p>
+            </div>
+          </div>
+        `;
+      } else if (testMailModal.templateType === 'fo_dues') {
+        let duesGroups: any[] = [];
+        let grandTotal = 750;
+
+        if (targetReq) {
+          const detailed = await fetchDetailedStudentDues(studentId, targetReq);
+          duesGroups = detailed.groups;
+          grandTotal = targetReq.totalFeeDue || detailed.grandTotal || 0;
+        }
+
+        if (duesGroups.length === 0) {
+          duesGroups = [
+            { department: 'Hostel', subtotal: 500, items: [{ reason: 'Damaged Cot', amount: 500 }] },
+            { department: 'Library', subtotal: 250, items: [{ reason: 'Unreturned Book (Physics Vol. 1)', amount: 250 }] }
+          ];
+          grandTotal = 750;
+        }
+
+        const duesBlob = await generateDuesPdfBlob(
+          '',
+          {
+            name: studentName,
+            studentId,
+            program: studentProgram,
+            department: studentDept,
+            hostel: studentHostel
+          },
+          duesGroups,
+          grandTotal
+        );
+
+        // Download PDF directly
+        downloadPdfDirectly(duesBlob, `${studentId}_Official_Dues_Report.pdf`);
+
+        // Upload to Drive & convert to direct download URL
+        let downloadLink = `https://rguktclearance.vercel.app/download-dues?studentId=${studentId}`;
+        let shareableUrl: string | null = null;
+        try {
+          const driveRes = await uploadNdcToDrive(duesBlob, `${studentId}_Official_Dues_Report.pdf`);
+          if (driveRes.downloadUrl) {
+            downloadLink = driveRes.downloadUrl;
+            shareableUrl = driveRes.shareableUrl;
+          }
+        } catch (driveErr) {
+          console.warn('Test drive upload warning:', driveErr);
+        }
+
+        htmlMessage = `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+            <div style="background: linear-gradient(135deg, #ef4444, #dc2626); padding: 24px 20px; text-align: center; color: white;">
+              <h2 style="margin: 0; font-size: 24px; font-weight: 700;">Pending Dues Alert</h2>
+            </div>
+            <div style="padding: 30px;">
+              <p style="color: #334155; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
+                Hello <strong>${studentName}</strong> (ID: ${studentId}),<br><br>
+                Your clearance application has pending dues of <strong>Rs. ${grandTotal.toLocaleString('en-IN')}</strong> that must be settled.
+              </p>
+              <div style="text-align: center; margin: 25px 0;">
+                <a href="${downloadLink}" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">
+                  ⬇ Download Official Statement (PDF)
+                </a>
+              </div>
+              ${shareableUrl ? `<p style="text-align: center; font-size: 12px;"><a href="${shareableUrl}" target="_blank" style="color: #2563eb;">View on Google Drive</a></p>` : ''}
+            </div>
+            <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+              <p style="color: #94a3b8; font-size: 12px; margin: 0;">RGUKT Clearance Hub &copy; ${new Date().getFullYear()}</p>
+            </div>
+          </div>
+        `;
+      } else if (testMailModal.templateType === 'completed') {
+        // Generate real NDC PDF with real student data and real department clearances
+        const ndcBlob = await generateNDCPdfBlob({
+          name: studentName,
+          studentId,
+          program: studentProgram,
+          department: studentDept,
+          hostel: studentHostel
+        }, targetReq || undefined);
+
+        // Download PDF directly to user's device
+        downloadPdfDirectly(ndcBlob, `${studentId}_Official_No_Due_Certificate.pdf`);
+
+        // Upload to Google Drive and convert to direct download URL
+        let ndcDownloadUrl = `https://rguktclearance.vercel.app/download-ndc?studentId=${studentId}`;
+        let driveShareableUrl: string | null = null;
+        try {
+          const driveRes = await uploadNdcToDrive(ndcBlob, `${studentId}_Official_No_Due_Certificate.pdf`);
+          if (driveRes.downloadUrl) {
+            ndcDownloadUrl = driveRes.downloadUrl;
+            driveShareableUrl = driveRes.shareableUrl;
+          }
+        } catch (driveErr) {
+          console.warn('Test NDC drive upload warning:', driveErr);
+        }
+
+        htmlMessage = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f9fafb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+            <div style="background: linear-gradient(135deg, #16a34a, #15803d); padding: 30px 20px; text-align: center;">
+              <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Clearance Application Completed!</h1>
+            </div>
+            <div style="padding: 30px; background-color: white;">
+              <p style="color: #334155; font-size: 16px; margin-bottom: 20px;">Dear <strong>${studentName}</strong>,</p>
+              <p style="color: #334155; font-size: 16px; margin-bottom: 25px; line-height: 1.6;">
+                Congratulations! Your clearance application has been fully approved by all departments. You are now officially cleared with zero dues.
+              </p>
+              
+              <div style="margin-top: 30px; padding: 22px; background-color: #f0fdf4; border: 1.5px dashed #86efac; border-radius: 12px; text-align: center;">
+                <div style="display: inline-block; padding: 4px 12px; background-color: #dcfce7; border-radius: 20px; font-size: 11px; font-weight: 700; color: #166534; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.5px;">
+                  Official Certificate Available
+                </div>
+                <h4 style="margin: 0 0 6px 0; color: #0f172a; font-size: 16px; font-weight: 700;">No Due Certificate (NDC)</h4>
+                <p style="margin: 0 0 16px 0; color: #64748b; font-size: 13px; line-height: 1.5;">
+                  Your official university No Due Certificate for <strong>${studentName} (${studentId})</strong> is now ready. Click the button below to download your official PDF directly.
+                </p>
+                <div>
+                  <a href="${ndcDownloadUrl}" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 14px 30px; border-radius: 8px; font-weight: 700; font-size: 15px; box-shadow: 0 4px 10px rgba(22, 163, 74, 0.25);">
+                    ⬇ Download NDC Certificate
+                  </a>
+                </div>
+                <p style="color: #94a3b8; font-size: 11px; margin: 10px 0 0 0;">
+                  (Click the button above to directly download your official certificate)
+                </p>
+                ${driveShareableUrl ? `
+                <p style="margin-top: 10px; font-size: 11px;">
+                  <a href="${driveShareableUrl}" target="_blank" style="color: #2563eb; text-decoration: underline;">
+                    Preview on Google Drive
+                  </a>
+                </p>
+                ` : ''}
+              </div>
+            </div>
+            <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+              <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                RGUKT Clearance Hub &copy; ${new Date().getFullYear()}<br>
+                This is an official automated notification.
+              </p>
+            </div>
+          </div>
+        `;
+      }
+
+      await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID,
+        {
+          to_name: recipientName,
+          to_email: testRecipientEmail,
+          html_message: htmlMessage
+        },
+        EMAILJS_PUBLIC_KEY
+      );
+
+      setTestMailFeedback({
+        type: 'success',
+        message: `Test email successfully sent to ${testRecipientEmail} for ${studentName} (${studentId})! The PDF was also generated and downloaded.`
+      });
+    } catch (err: any) {
+      console.error('Failed to send test email:', err);
+      setTestMailFeedback({
+        type: 'error',
+        message: 'Failed to send test email: ' + (err.text || err.message || 'Unknown error')
+      });
+    } finally {
+      setIsSendingTestMail(false);
+    }
+  };
+
   const overrideApprove = async (departmentId: string, departmentName: string, studentName: string, reqId: string) => {
     if (!window.confirm(`GOD MODE: Are you sure you want to FORCE APPROVE ${studentName}'s clearance for the ${departmentName} department? This bypasses the department's authority.`)) {
       return;
@@ -538,7 +798,7 @@ export default function AdminDashboard() {
                       </p>
                     </div>
                     <div style="text-align: center;">
-                      <a href="https://rguktclearance.vercel.app/" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">Upload Receipt</a>
+                      <a href="https://rguktclearance.vercel.app/student/dashboard" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">Upload Receipt</a>
                     </div>
                     ${pdfLinkHtml}
                   </div>
@@ -567,7 +827,105 @@ export default function AdminDashboard() {
           }
         } else if (currentIdx === req.departmentClearances.length - 1) {
           const crRef = doc(db, 'clearanceRequests', req.id);
-          await updateDoc(crRef, { status: 'APPROVED', updatedAt: new Date().toISOString() });
+          
+          let ndcDownloadUrl = `https://rguktclearance.vercel.app/download-ndc?reqId=${req.id}&studentId=${req.studentId || ''}`;
+          let driveFileId: string | null = null;
+          let driveShareableUrl: string | null = null;
+
+          try {
+            const ndcBlob = await generateNDCPdfBlob(
+              {
+                name: studentName,
+                studentId: req.studentId || '',
+                program: req.programType || 'B.Tech',
+                department: req.department || '',
+                hostel: req.presentHostel || ''
+              },
+              req
+            );
+
+            try {
+              const driveRes = await uploadNdcToDrive(ndcBlob, `${req.studentId || 'Student'}_Official_No_Due_Certificate.pdf`);
+              if (driveRes.downloadUrl) {
+                ndcDownloadUrl = driveRes.downloadUrl;
+                driveFileId = driveRes.fileId;
+                driveShareableUrl = driveRes.shareableUrl;
+              }
+            } catch (driveErr) {
+              console.warn('Admin: Google Drive upload warning:', driveErr);
+            }
+
+            await updateDoc(crRef, {
+              status: 'APPROVED',
+              ndcDownloadUrl,
+              ndcDriveFileId: driveFileId || null,
+              ndcDriveUrl: driveShareableUrl || null,
+              ndcGeneratedAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            });
+
+            // Send completion email to student
+            if (req.email) {
+              const htmlMessage = `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f9fafb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+                  <div style="background: linear-gradient(135deg, #16a34a, #15803d); padding: 30px 20px; text-align: center;">
+                    <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Clearance Application Completed!</h1>
+                  </div>
+                  <div style="padding: 30px; background-color: white;">
+                    <p style="color: #334155; font-size: 16px; margin-bottom: 20px;">Dear <strong>${studentName}</strong>,</p>
+                    <p style="color: #334155; font-size: 16px; margin-bottom: 25px; line-height: 1.6;">
+                      Congratulations! Your clearance application has been fully approved by all departments. You are now officially cleared with zero dues.
+                    </p>
+                    
+                    <div style="margin-top: 30px; padding: 22px; background-color: #f0fdf4; border: 1.5px dashed #86efac; border-radius: 12px; text-align: center;">
+                      <div style="display: inline-block; padding: 4px 12px; background-color: #dcfce7; border-radius: 20px; font-size: 11px; font-weight: 700; color: #166534; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.5px;">
+                        Official Certificate Available
+                      </div>
+                      <h4 style="margin: 0 0 6px 0; color: #0f172a; font-size: 16px; font-weight: 700;">No Due Certificate (NDC)</h4>
+                      <p style="margin: 0 0 16px 0; color: #64748b; font-size: 13px; line-height: 1.5;">
+                        Your official university No Due Certificate is now ready. Click the button below to download your official PDF directly.
+                      </p>
+                      <div>
+                        <a href="${ndcDownloadUrl}" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 14px 30px; border-radius: 8px; font-weight: 700; font-size: 15px; box-shadow: 0 4px 10px rgba(22, 163, 74, 0.25);">
+                          ⬇ Download NDC Certificate
+                        </a>
+                      </div>
+                      <p style="color: #94a3b8; font-size: 11px; margin: 10px 0 0 0;">
+                        (Click the button above to directly download your official certificate)
+                      </p>
+                      ${driveShareableUrl ? `
+                      <p style="margin-top: 10px; font-size: 11px;">
+                        <a href="${driveShareableUrl}" target="_blank" style="color: #2563eb; text-decoration: underline;">
+                          Preview on Google Drive
+                        </a>
+                      </p>
+                      ` : ''}
+                    </div>
+                  </div>
+                  <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+                    <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                      RGUKT Clearance Hub &copy; ${new Date().getFullYear()}<br>
+                      This is an automated message, please do not reply.
+                    </p>
+                  </div>
+                </div>
+              `;
+
+              await emailjs.send(
+                EMAILJS_SERVICE_ID,
+                EMAILJS_TEMPLATE_ID,
+                {
+                  to_name: studentName,
+                  to_email: req.email,
+                  html_message: htmlMessage
+                },
+                EMAILJS_PUBLIC_KEY
+              );
+            }
+          } catch (err) {
+            console.error('Failed to complete final approval email flow:', err);
+            await updateDoc(crRef, { status: 'APPROVED', updatedAt: new Date().toISOString() });
+          }
         }
       }
       
@@ -860,6 +1218,16 @@ export default function AdminDashboard() {
                            dangerouslySetInnerHTML={{ __html: MOCK_SUBMISSION_TEMPLATE }}>
                       </div>
                     </div>
+                    {/* Action Bar Below Template */}
+                    <div className="mt-4 pt-4 border-t border-surface-variant flex flex-wrap gap-2 items-center justify-between">
+                      <span className="text-xs text-on-surface-variant font-medium">Test Automation:</span>
+                      <button
+                        onClick={() => handleOpenTestMail('submission', 'Application Submitted')}
+                        className="px-4 py-2 bg-primary hover:bg-primary/90 text-on-primary text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Mail className="w-3.5 h-3.5" /> Send Test Mail
+                      </button>
+                    </div>
                   </div>
 
                   {/* FO Pending Dues Template */}
@@ -876,6 +1244,24 @@ export default function AdminDashboard() {
                            dangerouslySetInnerHTML={{ __html: MOCK_FO_DUES_TEMPLATE }}>
                       </div>
                     </div>
+                    {/* Action Bar Below Template */}
+                    <div className="mt-4 pt-4 border-t border-surface-variant flex flex-wrap gap-2 items-center justify-between">
+                      <span className="text-xs text-on-surface-variant font-medium">Test Automation & Dues PDF:</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleTestDownloadPdf}
+                          className="px-3 py-2 bg-surface-variant/40 hover:bg-surface-variant/70 text-on-surface text-xs font-bold rounded-xl border border-outline-variant/30 transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5" /> Download Dues PDF
+                        </button>
+                        <button
+                          onClick={() => handleOpenTestMail('fo_dues', 'Pending Dues Alert (FO)')}
+                          className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Mail className="w-3.5 h-3.5" /> Send Test Mail & PDF
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Application Completed Template */}
@@ -890,6 +1276,24 @@ export default function AdminDashboard() {
                     <div className="flex-1 bg-surface-container-lowest rounded-xl border border-outline-variant/30 overflow-hidden shadow-inner p-4 flex items-center justify-center">
                       <div className="w-full max-w-md scale-[0.8] origin-top h-[600px] overflow-y-auto no-scrollbar shadow-xl rounded-xl border border-surface-variant"
                            dangerouslySetInnerHTML={{ __html: MOCK_COMPLETION_TEMPLATE }}>
+                      </div>
+                    </div>
+                    {/* Action Bar Below Template */}
+                    <div className="mt-4 pt-4 border-t border-surface-variant flex flex-wrap gap-2 items-center justify-between">
+                      <span className="text-xs text-on-surface-variant font-medium">Test Automation & NDC PDF:</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleTestDownloadNdcPdf}
+                          className="px-3 py-2 bg-surface-variant/40 hover:bg-surface-variant/70 text-on-surface text-xs font-bold rounded-xl border border-outline-variant/30 transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5" /> Download NDC PDF
+                        </button>
+                        <button
+                          onClick={() => handleOpenTestMail('completed', 'Application Completed (NDC)')}
+                          className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Mail className="w-3.5 h-3.5" /> Send Test Mail & PDF
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1328,6 +1732,124 @@ export default function AdminDashboard() {
             >
               Close
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Test Mail Dispatch Modal */}
+      {testMailModal.open && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-on-background/50 backdrop-blur-sm p-4">
+          <div className="bg-surface-container-lowest rounded-3xl w-full max-w-lg shadow-2xl border border-surface-variant overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-surface-variant flex justify-between items-center bg-surface/60">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                  <Mail className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-headline-sm text-lg font-bold text-primary">Send Test Email</h3>
+                  <p className="text-xs text-on-surface-variant font-medium">{testMailModal.title}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setTestMailModal({ open: false, templateType: null, title: '' })}
+                className="p-1.5 rounded-full hover:bg-surface-variant text-on-surface-variant transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSendTestMail} className="p-6 space-y-4">
+              <p className="text-xs text-on-surface-variant leading-relaxed">
+                Enter your email address to receive this automated template. If the template contains an NDC or Dues Statement, the vector PDF will automatically be generated, uploaded to Google Drive with an instant download link, and immediately downloaded to your browser.
+              </p>
+
+              <div>
+                <label className="block text-xs font-bold text-primary mb-1.5 uppercase tracking-wider">
+                  Select Student Data (Real or Mock)
+                </label>
+                <select
+                  value={selectedStudentRequestId}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedStudentRequestId(val);
+                    if (val !== 'mock') {
+                      const found = requests.find(r => r.id === val);
+                      if (found?.email) {
+                        setTestRecipientEmail(found.email);
+                      }
+                    }
+                  }}
+                  className="w-full px-4 py-2.5 bg-surface border border-outline-variant rounded-xl text-xs font-body-md text-on-surface focus:outline-none focus:border-primary cursor-pointer"
+                >
+                  <option value="mock">Default Preview Sample Data (Sriram / John)</option>
+                  {requests.map((req) => (
+                    <option key={req.id} value={req.id}>
+                      {req.studentName} ({req.actualStudentId}) — {req.programType || 'B.Tech'}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-on-surface-variant/80 mt-1">
+                  Selecting an active student automatically uses their real name, ID, program, department, and real department clearances in the generated PDF and email!
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-primary mb-1.5 uppercase tracking-wider">
+                  Recipient Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="e.g. yourname@rgukt.ac.in or personal@gmail.com"
+                  value={testRecipientEmail}
+                  onChange={(e) => setTestRecipientEmail(e.target.value)}
+                  className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-xl text-sm font-body-md text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                  autoFocus
+                />
+              </div>
+
+              {testMailFeedback && (
+                <div className={`p-3.5 rounded-xl border text-xs leading-relaxed flex items-start gap-2.5 ${
+                  testMailFeedback.type === 'success'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : 'bg-red-50 border-red-200 text-red-800'
+                }`}>
+                  {testMailFeedback.type === 'success' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  )}
+                  <span>{testMailFeedback.message}</span>
+                </div>
+              )}
+
+              <div className="pt-2 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setTestMailModal({ open: false, templateType: null, title: '' })}
+                  className="px-4 py-2.5 text-xs font-bold text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSendingTestMail}
+                  className="px-5 py-2.5 bg-primary hover:bg-primary/90 text-on-primary text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-60"
+                >
+                  {isSendingTestMail ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Generating & Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="w-3.5 h-3.5" />
+                      Send Test Email & Download PDF
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

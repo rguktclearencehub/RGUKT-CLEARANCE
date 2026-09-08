@@ -23,7 +23,7 @@ export default function FeeReceipt({ student, clearances, totalFeeDue, paymentRe
     window.print();
   };
 
-  const fees = clearances.filter(d => d.feeDue > 0);
+  const fees = clearances.filter(d => (d.feeDue > 0 || d.status_fee === 'PAID'));
 
   return (
     <div className="fixed inset-0 bg-primary/40 backdrop-blur-sm flex items-start sm:items-center justify-center p-4 z-[200] print:bg-white print:p-0 overflow-y-auto">
@@ -44,32 +44,19 @@ export default function FeeReceipt({ student, clearances, totalFeeDue, paymentRe
         </button>
       </div>
 
-      {/* Printable Receipt Area */}
-      <div className="printable-area bg-white w-full max-w-2xl rounded-xl shadow-2xl p-2 sm:p-3 relative overflow-hidden print:shadow-none print:max-w-3xl print:p-6 mt-16 sm:mt-0 mb-8 sm:mb-0 shrink-0">
+      {/* Main Printable Receipt Card */}
+      <div className="bg-white text-slate-800 rounded-xl shadow-2xl p-4 sm:p-6 max-w-lg w-full border border-slate-200 print:shadow-none print:border-none print:m-0 print:p-0">
         
-        {/* Background decorative elements */}
-        <div className="absolute -top-32 -right-32 w-64 h-64 bg-green-50 rounded-full opacity-50 blur-3xl"></div>
-        <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-blue-50 rounded-full opacity-50 blur-3xl"></div>
-
-        <div className="border-[2px] sm:border-[4px] border-double border-slate-200 p-2 sm:p-4 relative z-10 bg-white/50 backdrop-blur-sm rounded-lg">
+        {/* Border wrapper for classic look */}
+        <div className="border-2 border-slate-800 p-4 sm:p-6 rounded-lg relative">
           
-          <div className="flex items-center justify-between mb-3 sm:mb-4 border-b border-slate-300 pb-2 sm:pb-3">
-            <div className="w-10 h-10 sm:w-16 sm:h-16 shrink-0 flex items-center justify-center">
-              <img src="/rgukt.png" alt="RGUKT Logo" className="w-full h-full object-contain" />
-            </div>
-            
-            <div className="flex-1 text-center px-1 sm:px-2">
-              <h1 className="text-[10px] sm:text-[12px] md:text-[14px] lg:text-[16px] font-bold text-[#b03a2e] mb-0.5 font-sans whitespace-nowrap">
-                Rajiv Gandhi University of Knowledge Technologies
-              </h1>
-              <p className="text-[8px] sm:text-[10px] md:text-xs text-slate-700 font-medium leading-tight">
-                (A.P. Government Act 18 of 2008)<br />
-                IIIT RK Valley, RGUKT-A.P.<br />
-                RK Valley (Idupulapaya), Vempalli (M), Y.S.R. Kadapa (Dist.), A.P-516330
-              </p>
-            </div>
-            
-            <div className="w-12 sm:w-20 shrink-0 hidden md:block"></div>
+          {/* Header */}
+          <div className="text-center border-b-2 border-slate-300 pb-3 sm:pb-4 mb-3 sm:mb-4">
+            <h1 className="text-base sm:text-lg font-bold tracking-wide uppercase text-slate-900 font-serif">
+              Rajiv Gandhi University of Knowledge Technologies
+            </h1>
+            <p className="text-[10px] sm:text-xs text-slate-600 font-medium">Catering to the Educational Needs of Gifted Rural Youth</p>
+            <p className="text-[9px] sm:text-[10px] text-slate-500">Andhra Pradesh / Telangana</p>
           </div>
 
           <div className="text-center mb-3 sm:mb-4">
@@ -101,17 +88,25 @@ export default function FeeReceipt({ student, clearances, totalFeeDue, paymentRe
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {fees.map((f, idx) => (
-                  <tr key={idx} className="bg-white">
-                    <td className="py-1 px-2 font-medium text-slate-700">{f.departmentName}</td>
-                    <td className="py-1 px-2 font-medium text-slate-900 text-right">₹{f.feeDue.toFixed(2)}</td>
+                {fees.length > 0 ? (
+                  fees.map((f, idx) => (
+                    <tr key={idx} className="bg-white">
+                      <td className="py-1 px-2 font-medium text-slate-700">{f.departmentName}</td>
+                      <td className="py-1 px-2 font-medium text-slate-900 text-right">₹{(f.feeDue || 0).toFixed(2)}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr className="bg-white">
+                    <td colSpan={2} className="py-2.5 px-2 text-center text-slate-600 font-medium italic">
+                      All university department dues cleared & verified
+                    </td>
                   </tr>
-                ))}
+                )}
               </tbody>
               <tfoot className="bg-slate-50 border-t-2 border-slate-300">
                 <tr>
                   <th className="py-1.5 px-2 font-bold text-slate-800 text-sm">Total Amount Paid</th>
-                  <th className="py-1.5 px-2 font-bold text-green-700 text-right text-sm">₹{totalFeeDue.toFixed(2)}</th>
+                  <th className="py-1.5 px-2 font-bold text-green-700 text-right text-sm">₹{(totalFeeDue || 0).toFixed(2)}</th>
                 </tr>
               </tfoot>
             </table>

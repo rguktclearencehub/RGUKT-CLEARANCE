@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CheckSquare, User, FileText, Settings, LogOut, Search, Bell, HelpCircle, Book, Building, Dumbbell, Briefcase, AlertCircle, Clock, CheckCircle2, Send, ShieldCheck, FlaskConical, Microscope, Monitor, Award, UserCog, Lock, ClipboardList, ChevronDown, Wrench } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, User, FileText, Settings, LogOut, Search, Bell, HelpCircle, Book, Building, Dumbbell, Briefcase, AlertCircle, Clock, CheckCircle2, Send, ShieldCheck, FlaskConical, Microscope, Monitor, Award, UserCog, Lock, ClipboardList, ChevronDown, Wrench, Download, CloudUpload, FileCheck } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, query, where, getDocs, doc, getDoc, writeBatch, limit, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import emailjs from '@emailjs/browser';
 import NoDueCertificate from '../components/NoDueCertificate';
 import FeeReceipt from '../components/FeeReceipt';
-import { generateDuesPdfBlob, uploadToGoogleDrive, getDriveDownloadLink, getDrivePreviewLink, downloadPdfDirectly, fetchDetailedStudentDues, type DepartmentDuesGroup } from '../utils/pdfGenerator';
+import DriveUploadModal from '../components/DriveUploadModal';
+import { generateDuesPdfBlob, generateNDCPdfBlob, uploadToGoogleDrive, uploadNdcToDrive, getDriveDownloadLink, getDrivePreviewLink, downloadPdfDirectly, fetchDetailedStudentDues, type DepartmentDuesGroup } from '../utils/pdfGenerator';
 
 const EMAILJS_SERVICE_ID = 'service_yato66e';
 const EMAILJS_PUBLIC_KEY = 'uX0TI21Zg8bha0FM0';
@@ -54,6 +55,10 @@ export default function StudentDashboard() {
   const [showFeeReceipt, setShowFeeReceipt] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [driveModalOpen, setDriveModalOpen] = useState(false);
+  const [driveUploadStatus, setDriveUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
+  const [driveShareableUrl, setDriveShareableUrl] = useState<string | null>(null);
+  const [driveErrorMessage, setDriveErrorMessage] = useState<string | null>(null);
   const [detailedDuesGroups, setDetailedDuesGroups] = useState<DepartmentDuesGroup[]>([]);
   const [isLoadingDetailedDues, setIsLoadingDetailedDues] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -338,7 +343,7 @@ export default function StudentDashboard() {
             </div>
             
             <div style="text-align: center; margin-top: 30px;">
-              <a href="https://rguktclearance.vercel.app/" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(22, 163, 74, 0.2);">Track Application Status</a>
+              <a href="https://rguktclearance.vercel.app/student/dashboard" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(22, 163, 74, 0.2);">Track Application Status</a>
             </div>
           </div>
           
@@ -562,6 +567,32 @@ export default function StudentDashboard() {
     }
   };
 
+  const handleSaveNdcToDrive = async () => {
+    if (!data) return;
+    setDriveModalOpen(true);
+    setDriveUploadStatus('uploading');
+    setDriveErrorMessage(null);
+    setDriveShareableUrl(null);
+
+    try {
+      const blob = await generateNDCPdfBlob({
+        name: data.name,
+        studentId: data.studentId,
+        program: data.program,
+        department: data.department,
+        hostel: data.presentHostel
+      });
+      const fileName = `${data.studentId}_Official_No_Due_Certificate.pdf`;
+      const res = await uploadNdcToDrive(blob, fileName);
+      setDriveShareableUrl(res.shareableUrl || null);
+      setDriveUploadStatus('success');
+    } catch (e: any) {
+      console.error('Google Drive upload failed:', e);
+      setDriveErrorMessage(e.message || 'Failed to save certificate to Google Drive.');
+      setDriveUploadStatus('error');
+    }
+  };
+
   const logout = () => {
     localStorage.removeItem('user');
     navigate('/login', { replace: true });
@@ -582,10 +613,16 @@ export default function StudentDashboard() {
 
   const request = data.clearanceRequest;
   const currentProgram = getClearanceProgram(request, selectedProgram);
-  const currentCourse = request?.courseType || selectedCourseType;
+  const currentCourse = request?.courseType || (currentProgram === 'B.Tech' ? selectedBranch : selectedCourseType);
   const currentPucCourseType = request?.pucCourseType || (currentProgram === 'PUC' ? currentCourse : selectedCourseType);
   
-  const baseDepartments = currentProgram === 'B.Tech' ? BTECH_DEPARTMENTS : PUC_DEPARTMENTS;
+  const baseDepartments = currentProgram === 'B.Tech' 
+    ? BTECH_DEPARTMENTS.map(dept => {
+        if (dept === 'HOD') return `HOD ${currentCourse || ''}`.trim();
+        if (dept === 'Engg Labs') return `Lab Technician ${currentCourse || ''}`.trim();
+        return dept;
+      })
+    : PUC_DEPARTMENTS;
   
   const currentGender = request?.gender || selectedGender;
   const hostelDeptName = currentGender === 'Male' ? 'Boys Hostel' : 'Girls Hostel';
@@ -595,10 +632,11 @@ export default function StudentDashboard() {
   );
   const deps = request?.departmentClearances || [];
   
-  
-  
-  
-  
+  const foDept = deps.find((d: any) => d.departmentName === 'FO');
+  const isFoApproved = foDept?.status === 'APPROVED';
+  const txnId = request?.paymentReferenceId || foDept?.paymentReferenceId || foDept?.referenceId || '';
+  const isDuesCleared = isFoApproved || Boolean(txnId && (request?.totalFeeDue === 0 || request?.duesCleared));
+  const hasPendingDues = !isDuesCleared && Number(request?.totalFeeDue) > 0;
 
   const getIcon = (name: string) => {
     const n = name.toUpperCase();
@@ -608,7 +646,7 @@ export default function StudentDashboard() {
     if (n.includes('FO') || n.includes('ACCOUNT')) return <Briefcase className="w-6 h-6" />;
     if (n.includes('CHEMISTRY') || n.includes('PHYSICS')) return <FlaskConical className="w-6 h-6" />;
     if (n.includes('BIOLOGY')) return <Microscope className="w-6 h-6" />;
-    if (n.includes('ENGG LABS') || n.includes('ENG LAB')) return <Wrench className="w-6 h-6" />;
+    if (n.includes('ENGG LABS') || n.includes('ENG LAB') || n.includes('LAB TECHNICIAN')) return <Wrench className="w-6 h-6" />;
     if (n.includes('IT INFRA')) return <Monitor className="w-6 h-6" />;
     if (n.includes('SCHOLARSHIP')) return <Award className="w-6 h-6" />;
     if (n.includes('DEAN') || n.includes('DIRECTOR') || n.includes('AO') || n.includes('COE') || n.includes('HOD') || n.includes('DSW')) return <UserCog className="w-6 h-6" />;
@@ -797,6 +835,59 @@ export default function StudentDashboard() {
             </div>
           )}
 
+          {/* Clearance Completed Banner - Below Flow Card, Above Department Status */}
+          {deps.length === currentDepartments.length && deps.every((d: any) => d.status === 'APPROVED') && (
+            <div className="mb-8 flex justify-center animate-in fade-in zoom-in duration-500 fill-mode-both">
+              <div className="bg-green-50 border border-green-200 rounded-2xl p-6 md:p-8 w-full max-w-3xl text-center shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-1.5 bg-green-500"></div>
+                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-xs">
+                  <Award className="w-8 h-8" />
+                </div>
+                <h4 className="text-2xl md:text-3xl font-bold text-green-900 mb-2">Clearance Completed!</h4>
+                <p className="text-green-700 mb-6 font-medium text-sm md:text-base max-w-lg mx-auto">
+                  Congratulations! You have successfully completed the clearance process for all departments.
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <button 
+                    onClick={() => setShowCertificate(true)}
+                    className="px-6 py-3 bg-green-600 text-white rounded-xl font-label-md text-sm font-bold shadow-md hover:bg-green-700 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                  >
+                    <FileText className="w-5 h-5" />
+                    View Certificate
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const blob = await generateNDCPdfBlob({
+                          name: data.name,
+                          studentId: data.studentId,
+                          program: data.program,
+                          department: data.department,
+                          hostel: data.presentHostel
+                        });
+                        downloadPdfDirectly(blob, `${data.studentId}_Official_No_Due_Certificate.pdf`);
+                      } catch (e: any) {
+                        alert('Download failed: ' + (e.message || e));
+                      }
+                    }}
+                    className="px-6 py-3 bg-white text-green-800 border border-green-300 rounded-xl font-label-md text-sm font-bold shadow-xs hover:bg-green-100 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                  >
+                    <Download className="w-5 h-5" />
+                    Download PDF
+                  </button>
+                  <button
+                    onClick={handleSaveNdcToDrive}
+                    disabled={driveUploadStatus === 'uploading'}
+                    className="px-6 py-3 bg-blue-600 text-white rounded-xl font-label-md text-sm font-bold shadow-md hover:bg-blue-700 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-60"
+                  >
+                    <CloudUpload className="w-5 h-5" />
+                    {driveUploadStatus === 'uploading' ? 'Saving...' : 'Save to Drive'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Grid Content */}
           {(request || isInitiating) && (
             <div className="animate-in fade-in duration-500">
@@ -806,17 +897,47 @@ export default function StudentDashboard() {
 
               <div className="flex items-center justify-between mb-6">
                 <div className="flex flex-col gap-4">
-                  {request && request.totalFeeDue > 0 && (
-                    request.paymentReferenceId ? (
-                      <button 
-                        onClick={() => setShowFeeBreakdown(true)}
-                        className="font-label-sm font-bold text-green-700 bg-green-100 hover:bg-green-200 transition-colors px-3 py-1 rounded-full border border-green-300 flex items-center gap-1.5 shadow-sm cursor-pointer"
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                        Fee Paid & Verified (Ref: {request.paymentReferenceId})
-                        <span className="text-[10px] bg-green-700 text-green-100 px-1.5 rounded-full ml-1">View Details</span>
-                      </button>
-                    ) : (
+                  {request && (
+                    isDuesCleared ? (
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        {/* Due Cleared Badge */}
+                        <button 
+                          onClick={() => setShowFeeBreakdown(true)}
+                          className="font-label-sm font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 transition-all px-3.5 py-1.5 rounded-full border border-emerald-300 flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-95"
+                        >
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>Due Cleared: ₹0</span>
+                          <span className="text-[10px] bg-emerald-700 text-white font-semibold px-2 py-0.5 rounded-full ml-1">View Details</span>
+                        </button>
+
+                        {/* Transaction ID Updated by FO Officer */}
+                        {txnId ? (
+                          <div className="font-label-sm font-semibold text-blue-900 bg-blue-50 px-3.5 py-1.5 rounded-full border border-blue-200 flex items-center gap-1.5 shadow-xs">
+                            <FileCheck className="w-4 h-4 text-blue-600 shrink-0" />
+                            <span>Txn ID: <strong className="font-mono text-blue-800 tracking-wider select-all font-bold">{txnId}</strong></span>
+                          </div>
+                        ) : (
+                          <div className="font-label-sm font-semibold text-emerald-800 bg-emerald-50 px-3.5 py-1.5 rounded-full border border-emerald-200 flex items-center gap-1.5 shadow-xs">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span>Approved by FO</span>
+                          </div>
+                        )}
+
+                        {/* Verified Receipt Link if uploaded */}
+                        {request.feeReceiptUrl && (
+                          <a
+                            href={request.feeReceiptUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-label-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors px-3 py-1.5 rounded-full border border-slate-300 flex items-center gap-1.5 shadow-xs"
+                            title="View your verified payment receipt"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Receipt Verified</span>
+                          </a>
+                        )}
+                      </div>
+                    ) : hasPendingDues ? (
                       <div className="flex flex-wrap items-center gap-2">
                         <button 
                           onClick={() => setShowFeeBreakdown(true)}
@@ -860,7 +981,7 @@ export default function StudentDashboard() {
                           </div>
                         )}
                       </div>
-                    )
+                    ) : null
                   )}
                 </div>
                 {request && (
@@ -931,6 +1052,19 @@ export default function StudentDashboard() {
                         </div>
                       )}
 
+                      {deptName === 'FO' && (dept?.status === 'APPROVED' || isDuesCleared || txnId) && (
+                        <div className="mb-2 space-y-1">
+                          <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-md text-xs font-bold border border-emerald-200 shadow-xs">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Due Cleared: ₹0
+                          </span>
+                          {txnId && (
+                            <div className="text-[11px] font-bold text-blue-900 bg-blue-50 border border-blue-200 rounded px-2 py-0.5 font-mono">
+                              Txn ID: {txnId}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <p className="font-body-sm text-[13px] leading-relaxed text-on-surface-variant mb-4 flex-1">
                         {dept?.remarks || (dept ? (dept.status === 'LOCKED' ? `Waiting for previous departments to approve.` : `Awaiting confirmation from ${deptName.toLowerCase()} manager.`) : `Ready to initiate clearance.`)}
                       </p>
@@ -955,25 +1089,7 @@ export default function StudentDashboard() {
                 })}
               </div>
 
-              {deps.length === currentDepartments.length && deps.every((d: any) => d.status === 'APPROVED') ? (
-                <div className="mt-8 flex justify-center animate-in fade-in zoom-in duration-500 delay-300 fill-mode-both">
-                  <div className="bg-green-50 border border-green-200 rounded-2xl p-6 md:p-8 w-full max-w-2xl text-center shadow-sm relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-1 bg-green-500"></div>
-                    <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Award className="w-8 h-8" />
-                    </div>
-                    <h4 className="text-2xl font-bold text-green-900 mb-2">Clearance Completed!</h4>
-                    <p className="text-green-700 mb-6 font-medium">Congratulations! You have successfully completed the clearance process for all departments.</p>
-                    <button 
-                      onClick={() => setShowCertificate(true)}
-                      className="px-8 py-3 bg-green-600 text-white rounded-xl font-label-md text-sm font-bold shadow-md hover:bg-green-700 transition-colors flex items-center justify-center gap-2 mx-auto"
-                    >
-                      <FileText className="w-5 h-5" />
-                      View No Due Certificate
-                    </button>
-                  </div>
-                </div>
-              ) : currentDepartments.filter(d => !deps.find((rd: any) => rd.departmentName === d)).length > 0 && (
+              {currentDepartments.filter(d => !deps.find((rd: any) => rd.departmentName === d)).length > 0 && (
                 <div className="mt-8 flex justify-end animate-in fade-in zoom-in duration-500 delay-300 fill-mode-both">
                   <button 
                     onClick={() => {
@@ -1332,6 +1448,35 @@ export default function StudentDashboard() {
                 </div>
               )}
 
+              {selectedDept.departmentName === 'FO' && (
+                <div className="py-2 border-b border-surface-variant/50">
+                  <span className="block text-on-surface-variant font-label-md mb-2 font-bold text-xs uppercase tracking-wider">
+                    Finance / Dues Clearance Status
+                  </span>
+                  <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        {selectedDept.status === 'APPROVED' || isDuesCleared ? 'Due Cleared: ₹0' : `Pending Dues: ₹${request?.totalFeeDue || 0}`}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                        selectedDept.status === 'APPROVED' ? 'bg-emerald-200 text-emerald-800' : 'bg-amber-200 text-amber-800'
+                      }`}>
+                        {selectedDept.status === 'APPROVED' ? 'Verified & Approved' : 'Pending Verification'}
+                      </span>
+                    </div>
+                    {(request?.paymentReferenceId || selectedDept.paymentReferenceId || selectedDept.referenceId || txnId) && (
+                      <div className="text-xs bg-white p-2.5 rounded-lg border border-emerald-200 text-slate-800 font-medium flex items-center justify-between">
+                        <span className="text-slate-600">Transaction ID:</span>
+                        <span className="font-mono font-bold text-blue-700 select-all">
+                          {request?.paymentReferenceId || selectedDept.paymentReferenceId || selectedDept.referenceId || txnId}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="py-2">
                 <span className="block text-on-surface-variant font-label-md text-xs font-semibold mb-1.5">Remarks / Notes</span>
                 <p className="font-body-sm text-primary text-xs bg-surface-variant/20 p-3 rounded-xl border border-surface-variant/50 leading-relaxed">
@@ -1405,7 +1550,9 @@ export default function StudentDashboard() {
           student={{
             name: data.name,
             studentId: data.studentId,
-            program: data.program
+            program: data.program,
+            department: data.department,
+            hostel: data.presentHostel
           }}
           onClose={() => setShowCertificate(false)}
         />
@@ -1792,14 +1939,14 @@ export default function StudentDashboard() {
           <div className="bg-surface-container-lowest rounded-2xl p-8 max-w-md w-full shadow-2xl border border-surface-variant animate-in fade-in zoom-in-95 duration-200">
             <div className="flex justify-between items-start mb-6">
               <div>
-                <h3 className={`font-headline-md text-2xl font-bold mb-1 ${data?.clearanceRequest?.paymentReferenceId ? 'text-green-700' : 'text-primary'}`}>
-                  {data?.clearanceRequest?.paymentReferenceId ? 'Fee Payment Receipt' : 'Fee Dues Breakdown'}
+                <h3 className={`font-headline-md text-2xl font-bold mb-1 ${isDuesCleared || txnId ? 'text-green-700' : 'text-primary'}`}>
+                  {isDuesCleared || txnId ? 'Fee Payment Receipt' : 'Fee Dues Breakdown'}
                 </h3>
                 <p className="font-body-sm text-on-surface-variant">
-                  {data?.clearanceRequest?.paymentReferenceId ? 'Official record of your paid department dues' : 'Departments that have issued pending dues'}
+                  {isDuesCleared || txnId ? 'Official record of your paid and cleared department dues' : 'Departments that have issued pending dues'}
                 </p>
               </div>
-              {data?.clearanceRequest?.paymentReferenceId ? (
+              {isDuesCleared || txnId ? (
                 <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
                   <CheckCircle2 className="text-green-600 w-6 h-6" />
                 </div>
@@ -1857,16 +2004,24 @@ export default function StudentDashboard() {
               )}
             </div>
 
-            <div className={`flex justify-between items-center p-4 rounded-xl border mb-4 ${data?.clearanceRequest?.paymentReferenceId ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+            <div className={`flex justify-between items-center p-4 rounded-xl border mb-4 ${isDuesCleared || txnId ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
               <div>
-                <span className={`block font-bold ${data?.clearanceRequest?.paymentReferenceId ? 'text-green-900' : 'text-amber-900'}`}>Total Due:</span>
-                {data?.clearanceRequest?.paymentReferenceId && (
+                <span className={`block font-bold ${isDuesCleared || txnId ? 'text-green-900' : 'text-amber-900'}`}>
+                  {isDuesCleared ? 'Due Cleared:' : 'Total Due:'}
+                </span>
+                {txnId ? (
                   <span className="text-xs font-semibold text-green-700 flex items-center gap-1 mt-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Paid (Ref: {data.clearanceRequest.paymentReferenceId})
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-600" /> Paid & Verified (Txn ID: {txnId})
                   </span>
-                )}
+                ) : isDuesCleared ? (
+                  <span className="text-xs font-semibold text-green-700 flex items-center gap-1 mt-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-600" /> Dues Cleared by FO
+                  </span>
+                ) : null}
               </div>
-              <span className={`text-xl font-bold ${data?.clearanceRequest?.paymentReferenceId ? 'text-green-700' : 'text-amber-700'}`}>₹{data?.clearanceRequest?.totalFeeDue || 0}</span>
+              <span className={`text-xl font-bold ${isDuesCleared || txnId ? 'text-green-700' : 'text-amber-700'}`}>
+                ₹{isDuesCleared ? 0 : (data?.clearanceRequest?.totalFeeDue || 0)}
+              </span>
             </div>
 
             {/* Official PDF Download Button in Modal */}
@@ -1882,7 +2037,7 @@ export default function StudentDashboard() {
               )}
             </button>
 
-            {data?.clearanceRequest?.paymentReferenceId ? (
+            {isDuesCleared || txnId ? (
               <div className="flex gap-3">
                 <button 
                   onClick={() => setShowFeeBreakdown(false)} 
@@ -1895,7 +2050,7 @@ export default function StudentDashboard() {
                     setShowFeeBreakdown(false);
                     setShowFeeReceipt(true);
                   }}
-                  className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl font-label-md font-semibold transition-colors shadow-sm flex items-center justify-center gap-2"
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl font-label-md font-semibold transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer"
                 >
                   Download Receipt
                 </button>
@@ -1921,11 +2076,22 @@ export default function StudentDashboard() {
             program: data.clearanceRequest.programType || 'PUC'
           }}
           clearances={data.clearanceRequest.departmentClearances || []}
-          totalFeeDue={data.clearanceRequest.totalFeeDue || 0}
-          paymentReferenceId={data.clearanceRequest.paymentReferenceId}
+          totalFeeDue={isDuesCleared ? 0 : (data.clearanceRequest.totalFeeDue || 0)}
+          paymentReferenceId={txnId || data.clearanceRequest.paymentReferenceId || 'VERIFIED-FO'}
           onClose={() => setShowFeeReceipt(false)}
         />
       )}
+
+      {/* Google Drive Upload Animated Modal */}
+      <DriveUploadModal
+        isOpen={driveModalOpen}
+        onClose={() => setDriveModalOpen(false)}
+        status={driveUploadStatus}
+        fileName={`${data?.studentId || 'Student'}_Official_No_Due_Certificate.pdf`}
+        shareableUrl={driveShareableUrl}
+        errorMessage={driveErrorMessage}
+        onRetry={handleSaveNdcToDrive}
+      />
 
     </div>
   );
