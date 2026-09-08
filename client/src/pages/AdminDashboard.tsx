@@ -399,9 +399,7 @@ export default function AdminDashboard() {
                 console.error("Failed to generate PDF for admin override email:", pdfErr);
               }
 
-              const baseUrl = window.location.origin.includes('localhost')
-                ? 'https://rguktclearance.vercel.app'
-                : window.location.origin;
+              const baseUrl = 'https://rguktclearance.vercel.app';
 
               const directDownloadUrl = `${baseUrl}/download-dues?reqId=${req.id}&studentId=${req.studentId || req.id}`;
               const primaryDownloadUrl = driveFileId ? getDriveDownloadLink(driveFileId) : directDownloadUrl;

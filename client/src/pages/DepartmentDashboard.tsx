@@ -28,6 +28,17 @@ const EMAILJS_SERVICE_ID = 'service_yato66e';
 const EMAILJS_TEMPLATE_ID = 'template_zdq3aos';
 const EMAILJS_PUBLIC_KEY = 'uX0TI21Zg8bha0FM0';
 
+const formatInr = (val: string | number) => {
+  if (!val && val !== 0) return '';
+  const parts = val.toString().split('.');
+  let intPart = parts[0];
+  if (intPart) {
+    intPart = Number(intPart).toLocaleString('en-IN');
+  }
+  return parts.length > 1 ? `${intPart}.${parts[1]}` : intPart;
+};
+const parseInr = (val: string) => val.replace(/,/g, '').replace(/[^0-9.]/g, '');
+
 export default function DepartmentDashboard() {
   const [clearances, setClearances] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -799,7 +810,7 @@ export default function DepartmentDashboard() {
       // Send final completion email to student
       if (newStatus === 'APPROVED' && isLast) {
         try {
-          const studentDashboardUrl = `${window.location.origin}/login`;
+          const studentDashboardUrl = 'https://rguktclearance.vercel.app/login';
           const htmlMessage = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f9fafb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
               <div style="background: linear-gradient(135deg, #16a34a, #15803d); padding: 30px 20px; text-align: center;">
@@ -1075,9 +1086,7 @@ export default function DepartmentDashboard() {
             console.error("Failed to generate PDF for email:", pdfErr);
           }
 
-          const baseUrl = window.location.origin.includes('localhost') 
-            ? 'https://rguktclearance.vercel.app' 
-            : window.location.origin;
+          const baseUrl = 'https://rguktclearance.vercel.app';
 
           const directDownloadUrl = `${baseUrl}/download-dues?reqId=${selectedClearance.requestId}&studentId=${selectedClearance.student.studentId}`;
           const primaryDownloadUrl = driveFileId ? getDriveDownloadLink(driveFileId) : directDownloadUrl;
@@ -1672,13 +1681,15 @@ export default function DepartmentDashboard() {
                     <div className="relative">
                       <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold text-sm">₹</span>
                       <input 
-                        type="number"
+                        type="text"
+                        inputMode="numeric"
                         min="0"
                         step="any"
-                        value={maintenanceFee}
+                        value={formatInr(maintenanceFee)}
                         onChange={(e) => {
-                          setMaintenanceFee(e.target.value);
-                          if (parseFloat(e.target.value) > 0) {
+                          const rawVal = parseInr(e.target.value);
+                          setMaintenanceFee(rawVal);
+                          if (parseFloat(rawVal) > 0) {
                             setActionType('APPROVE');
                           }
                         }}
@@ -1905,54 +1916,14 @@ export default function DepartmentDashboard() {
                         <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 flex items-center justify-center shrink-0">
                           <Award className="w-5 h-5" />
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h5 className="font-headline-sm text-base font-bold text-on-surface">Update Scholarship / Due</h5>
-                            <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
-                              scholarshipProgramType === 'B.Tech' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
-                            }`}>
-                              {scholarshipProgramType === 'B.Tech' ? 'Course: B.Tech (PUC + 4 Years)' : 'Course: PUC (2 Years)'}
-                            </span>
-                          </div>
-                          <p className="text-xs text-on-surface-variant mt-0.5">
-                            {scholarshipProgramType === 'B.Tech' 
-                              ? 'Single form displaying all 6 academic years (PUC + 4 Years B.Tech). Enter credited scholarship per year.'
-                              : 'Displaying PUC academic years (2 Years). Enter credited scholarship per year.'}
-                          </p>
-                        </div>
+                        <h5 className="font-headline-sm text-base font-bold text-on-surface">Update Scholarship / Due</h5>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-                        <button
-                          type="button"
-                          onClick={() => setScholarshipProgramType('PUC')}
-                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs border ${scholarshipProgramType === 'PUC' ? 'bg-blue-600 text-white border-blue-700' : 'bg-surface-variant/20 text-on-surface-variant hover:bg-surface-variant/30 border-outline-variant/30'}`}
-                        >
-                          PUC
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setScholarshipProgramType('B.Tech')}
-                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs border ${scholarshipProgramType === 'B.Tech' ? 'bg-purple-600 text-white border-purple-700' : 'bg-surface-variant/20 text-on-surface-variant hover:bg-surface-variant/30 border-outline-variant/30'}`}
-                        >
-                          B.Tech
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleMarkAllFullCredited}
-                          className="px-3 py-1.5 text-xs font-bold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
-                          title="Set all years as fully credited with 0 due"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" /> All Full (₹0 Due)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleClearScholarship}
-                          className="px-3 py-1.5 text-xs font-medium text-on-surface-variant hover:text-on-surface bg-surface-variant/20 hover:bg-surface-variant/30 rounded-lg transition-colors"
-                        >
-                          Clear
-                        </button>
-                      </div>
+                      <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                        scholarshipProgramType === 'B.Tech' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                      }`}>
+                        {scholarshipProgramType === 'B.Tech' ? 'Course: B.Tech' : 'Course: PUC'}
+                      </span>
                     </div>
 
                     <div className="space-y-4">
@@ -1973,86 +1944,78 @@ export default function DepartmentDashboard() {
                           return (
                             <div
                               key={yr.id}
-                              className={`p-3.5 rounded-xl border transition-all ${
+                              className={`p-3 rounded-xl border transition-all flex flex-wrap lg:flex-nowrap items-center gap-3 lg:gap-4 overflow-hidden ${
                                 dueNum > 0
                                   ? 'bg-amber-50/40 border-amber-200 shadow-xs'
                                   : isEntered
                                   ? 'bg-green-50/40 border-green-200'
-                                  : 'bg-surface-container-lowest border-outline-variant/30'
+                                  : 'bg-surface-container-lowest border-outline-variant/30 hover:border-primary/30'
                               }`}
                             >
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-bold text-sm text-primary">{yr.name}</span>
-                                  <span className="text-[11px] bg-blue-50 text-blue-700 font-semibold px-2 py-0.5 rounded border border-blue-100">
-                                    Total Scholarship: ₹{yr.totalGrant.toLocaleString()}
-                                  </span>
+                              {/* Left: Title & Grant */}
+                              <div className="flex items-center gap-3 w-full lg:w-auto lg:shrink-0">
+                                <span className="font-bold text-sm text-primary w-28 shrink-0 truncate">{yr.name}</span>
+                                <span className="text-[11px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 whitespace-nowrap">
+                                  ₹{yr.totalGrant.toLocaleString()}
+                                </span>
+                              </div>
+
+                              {/* Middle: Inputs */}
+                              <div className="flex items-center gap-2 w-full lg:flex-1 lg:justify-end">
+                                <div className="relative flex-1 lg:flex-none lg:w-36">
+                                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold text-[11px]">₹</span>
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    min="0"
+                                    max={yr.totalGrant}
+                                    step="any"
+                                    value={formatInr(rec.credited)}
+                                    onChange={(e) => handleScholarshipCreditedChange(yr.id, parseInr(e.target.value))}
+                                    placeholder="Credited"
+                                    title="Credited Amount"
+                                    className="w-full pl-6 pr-2 py-1.5 bg-white border border-outline-variant/50 rounded-md text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary shadow-xs transition-all"
+                                  />
                                 </div>
-                                <div>
-                                  {isEntered ? (
-                                    dueNum > 0 ? (
-                                      <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
-                                        <AlertCircle className="w-3 h-3" /> Due: ₹{dueNum.toLocaleString()}
-                                      </span>
-                                    ) : (
-                                      <span className="text-xs font-bold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
-                                        <CheckCircle2 className="w-3 h-3" /> Nil Due (Full Credited)
-                                      </span>
-                                    )
-                                  ) : (
-                                    <span className="text-xs text-on-surface-variant font-medium">Pending Entry</span>
-                                  )}
+                                <span className="text-on-surface-variant text-xs font-bold shrink-0">-</span>
+                                <div className="relative flex-1 lg:flex-none lg:w-36">
+                                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold text-[11px]">₹</span>
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    min="0"
+                                    max={yr.totalGrant}
+                                    step="any"
+                                    value={formatInr(rec.due)}
+                                    onChange={(e) => handleScholarshipDueChange(yr.id, parseInr(e.target.value))}
+                                    placeholder="Due (Auto)"
+                                    title="Due Amount"
+                                    className={`w-full pl-6 pr-2 py-1.5 bg-white border rounded-md text-xs font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-xs transition-all ${
+                                      dueNum > 0
+                                        ? 'border-red-300 text-red-600 bg-red-50/20 focus:border-red-500'
+                                        : isEntered
+                                        ? 'border-green-300 text-green-700 bg-green-50/20 focus:border-green-500'
+                                        : 'border-outline-variant/50 text-on-surface focus:border-primary'
+                                    }`}
+                                  />
                                 </div>
                               </div>
 
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                {/* Field 1: Credited Amount */}
-                                <div>
-                                  <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1 flex justify-between">
-                                    <span>Field 1: Credited Amount</span>
-                                    <span className="text-blue-600 font-medium lowercase">received</span>
-                                  </label>
-                                  <div className="relative">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold text-xs">₹</span>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      max={yr.totalGrant}
-                                      step="any"
-                                      value={rec.credited}
-                                      onChange={(e) => handleScholarshipCreditedChange(yr.id, e.target.value)}
-                                      placeholder="Enter credited (e.g. 35000)"
-                                      className="w-full pl-7 pr-3 py-2 bg-white border border-outline-variant/50 rounded-lg text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary shadow-xs transition-all"
-                                    />
-                                  </div>
-                                </div>
-
-                                {/* Field 2: Due Amount (Auto-calculated) */}
-                                <div>
-                                  <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1 flex justify-between">
-                                    <span>Field 2: Due Amount</span>
-                                    <span className="text-amber-700 font-medium lowercase">remaining (auto)</span>
-                                  </label>
-                                  <div className="relative">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold text-xs">₹</span>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      max={yr.totalGrant}
-                                      step="any"
-                                      value={rec.due}
-                                      onChange={(e) => handleScholarshipDueChange(yr.id, e.target.value)}
-                                      placeholder="Auto remaining (e.g. 10000)"
-                                      className={`w-full pl-7 pr-3 py-2 bg-white border rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-xs transition-all ${
-                                        dueNum > 0
-                                          ? 'border-red-300 text-red-600 bg-red-50/20 focus:border-red-500'
-                                          : isEntered
-                                          ? 'border-green-300 text-green-700 bg-green-50/20 focus:border-green-500'
-                                          : 'border-outline-variant/50 text-on-surface focus:border-primary'
-                                      }`}
-                                    />
-                                  </div>
-                                </div>
+                              {/* Right: Status Badge */}
+                              <div className="w-full lg:w-20 flex justify-end shrink-0">
+                                {isEntered ? (
+                                  dueNum > 0 ? (
+                                    <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1 whitespace-nowrap">
+                                      <AlertCircle className="w-3 h-3" /> Due
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1 whitespace-nowrap">
+                                      <CheckCircle2 className="w-3 h-3" /> Nil Due
+                                    </span>
+                                  )
+                                ) : (
+                                  <span className="text-[11px] text-on-surface-variant font-medium whitespace-nowrap">Pending</span>
+                                )}
                               </div>
                             </div>
                           );
@@ -2075,86 +2038,78 @@ export default function DepartmentDashboard() {
                             return (
                               <div
                                 key={yr.id}
-                                className={`p-3.5 rounded-xl border transition-all ${
+                                className={`p-3 rounded-xl border transition-all flex flex-wrap lg:flex-nowrap items-center gap-3 lg:gap-4 overflow-hidden ${
                                   dueNum > 0
                                     ? 'bg-amber-50/40 border-amber-200 shadow-xs'
                                     : isEntered
                                     ? 'bg-green-50/40 border-green-200'
-                                    : 'bg-surface-container-lowest border-outline-variant/30'
+                                    : 'bg-surface-container-lowest border-outline-variant/30 hover:border-primary/30'
                                 }`}
                               >
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-bold text-sm text-primary">{yr.name}</span>
-                                    <span className="text-[11px] bg-purple-50 text-purple-700 font-semibold px-2 py-0.5 rounded border border-purple-100">
-                                      Total Scholarship: ₹{yr.totalGrant.toLocaleString()}
-                                    </span>
+                                {/* Left: Title & Grant */}
+                                <div className="flex items-center gap-3 w-full lg:w-auto lg:shrink-0">
+                                  <span className="font-bold text-sm text-primary w-28 shrink-0 truncate">{yr.name}</span>
+                                  <span className="text-[11px] text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-100 whitespace-nowrap">
+                                    ₹{yr.totalGrant.toLocaleString()}
+                                  </span>
+                                </div>
+
+                                {/* Middle: Inputs */}
+                                <div className="flex items-center gap-2 w-full lg:flex-1 lg:justify-end">
+                                  <div className="relative flex-1 lg:flex-none lg:w-36">
+                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold text-[11px]">₹</span>
+                                    <input
+                                      type="text"
+                                      inputMode="numeric"
+                                      min="0"
+                                      max={yr.totalGrant}
+                                      step="any"
+                                      value={formatInr(rec.credited)}
+                                      onChange={(e) => handleScholarshipCreditedChange(yr.id, parseInr(e.target.value))}
+                                      placeholder="Credited"
+                                      title="Credited Amount"
+                                      className="w-full pl-6 pr-2 py-1.5 bg-white border border-outline-variant/50 rounded-md text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary shadow-xs transition-all"
+                                    />
                                   </div>
-                                  <div>
-                                    {isEntered ? (
-                                      dueNum > 0 ? (
-                                        <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
-                                          <AlertCircle className="w-3 h-3" /> Due: ₹{dueNum.toLocaleString()}
-                                        </span>
-                                      ) : (
-                                        <span className="text-xs font-bold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
-                                          <CheckCircle2 className="w-3 h-3" /> Nil Due (Full Credited)
-                                        </span>
-                                      )
-                                    ) : (
-                                      <span className="text-xs text-on-surface-variant font-medium">Pending Entry</span>
-                                    )}
+                                  <span className="text-on-surface-variant text-xs font-bold shrink-0">-</span>
+                                  <div className="relative flex-1 lg:flex-none lg:w-36">
+                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold text-[11px]">₹</span>
+                                    <input
+                                      type="text"
+                                      inputMode="numeric"
+                                      min="0"
+                                      max={yr.totalGrant}
+                                      step="any"
+                                      value={formatInr(rec.due)}
+                                      onChange={(e) => handleScholarshipDueChange(yr.id, parseInr(e.target.value))}
+                                      placeholder="Due (Auto)"
+                                      title="Due Amount"
+                                      className={`w-full pl-6 pr-2 py-1.5 bg-white border rounded-md text-xs font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-xs transition-all ${
+                                        dueNum > 0
+                                          ? 'border-red-300 text-red-600 bg-red-50/20 focus:border-red-500'
+                                          : isEntered
+                                          ? 'border-green-300 text-green-700 bg-green-50/20 focus:border-green-500'
+                                          : 'border-outline-variant/50 text-on-surface focus:border-primary'
+                                      }`}
+                                    />
                                   </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                  {/* Field 1: Credited Amount */}
-                                  <div>
-                                    <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1 flex justify-between">
-                                      <span>Field 1: Credited Amount</span>
-                                      <span className="text-blue-600 font-medium lowercase">received</span>
-                                    </label>
-                                    <div className="relative">
-                                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold text-xs">₹</span>
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        max={yr.totalGrant}
-                                        step="any"
-                                        value={rec.credited}
-                                        onChange={(e) => handleScholarshipCreditedChange(yr.id, e.target.value)}
-                                        placeholder="Enter credited (e.g. 40000)"
-                                        className="w-full pl-7 pr-3 py-2 bg-white border border-outline-variant/50 rounded-lg text-xs font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary shadow-xs transition-all"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  {/* Field 2: Due Amount (Auto-calculated) */}
-                                  <div>
-                                    <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1 flex justify-between">
-                                      <span>Field 2: Due Amount</span>
-                                      <span className="text-amber-700 font-medium lowercase">remaining (auto)</span>
-                                    </label>
-                                    <div className="relative">
-                                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold text-xs">₹</span>
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        max={yr.totalGrant}
-                                        step="any"
-                                        value={rec.due}
-                                        onChange={(e) => handleScholarshipDueChange(yr.id, e.target.value)}
-                                        placeholder="Auto remaining (e.g. 10000)"
-                                        className={`w-full pl-7 pr-3 py-2 bg-white border rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-xs transition-all ${
-                                          dueNum > 0
-                                            ? 'border-red-300 text-red-600 bg-red-50/20 focus:border-red-500'
-                                            : isEntered
-                                            ? 'border-green-300 text-green-700 bg-green-50/20 focus:border-green-500'
-                                            : 'border-outline-variant/50 text-on-surface focus:border-primary'
-                                        }`}
-                                      />
-                                    </div>
-                                  </div>
+                                {/* Right: Status Badge */}
+                                <div className="w-full lg:w-20 flex justify-end shrink-0">
+                                  {isEntered ? (
+                                    dueNum > 0 ? (
+                                      <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1 whitespace-nowrap">
+                                        <AlertCircle className="w-3 h-3" /> Due
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1 whitespace-nowrap">
+                                        <CheckCircle2 className="w-3 h-3" /> Nil Due
+                                      </span>
+                                    )
+                                  ) : (
+                                    <span className="text-[11px] text-on-surface-variant font-medium whitespace-nowrap">Pending</span>
+                                  )}
                                 </div>
                               </div>
                             );

@@ -221,13 +221,13 @@ export default function HostelPenaltyManager({ type = 'hostel', departmentName =
                 <div>
                   <label className="block font-label-sm text-on-surface-variant mb-1">Amount (₹)</label>
                   <input 
-                    type="number" 
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
+                    type="text"
+                    inputMode="numeric" 
+                    value={amount ? Number(amount).toLocaleString('en-IN') : ''}
+                    onChange={(e) => setAmount(e.target.value.replace(/,/g, '').replace(/[^0-9.]/g, ''))}
                     placeholder="e.g. 500" 
                     className="w-full px-3 py-2 bg-surface border border-outline-variant/50 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
                     required
-                    min="1"
                   />
                 </div>
                 <button 
