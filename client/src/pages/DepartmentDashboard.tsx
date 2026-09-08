@@ -1195,7 +1195,7 @@ export default function DepartmentDashboard() {
       // Show success text when file arrives
       setTimeout(() => {
         setForwardingAnim(prev => ({ ...prev, completed: true }));
-      }, 1500);
+      }, 1000);
 
       const nextQ = query(
         collection(db, 'departmentClearances'), 
@@ -1232,7 +1232,7 @@ export default function DepartmentDashboard() {
         fetchClearances(departmentName);
         setForwardingAnim({ isAnimating: false, nextDept: null, progress: false, completed: false });
         setIsForwarding(false);
-      }, 5000);
+      }, 2000);
 
     } catch (e) {
       console.error(e);
@@ -2726,7 +2726,7 @@ export default function DepartmentDashboard() {
               <div className="flex-1 mx-4 relative h-1 flex items-center">
                 <div className="w-full border-t-2 border-dashed border-outline-variant absolute"></div>
                 <div 
-                  className="absolute bg-white p-2 rounded-lg shadow-md border border-primary/20 transition-all duration-[1500ms] ease-in-out z-20"
+                  className="absolute bg-white p-2 rounded-lg shadow-md border border-primary/20 transition-all duration-1000 ease-in-out z-20"
                   style={{ 
                     left: forwardingAnim.progress ? '100%' : '0%',
                     transform: 'translateX(-50%)'
@@ -2738,18 +2738,18 @@ export default function DepartmentDashboard() {
 
               {/* Next Department */}
               <div className="flex flex-col items-center gap-3 z-10">
-                <div className={`w-20 h-20 rounded-2xl border flex items-center justify-center shadow-inner transition-colors duration-500 delay-1000 relative ${forwardingAnim.progress ? 'bg-orange-100 border-orange-300' : 'bg-orange-50 border-orange-200'}`}>
+                <div className={`w-20 h-20 rounded-2xl border flex items-center justify-center shadow-inner transition-colors duration-500 delay-700 relative ${forwardingAnim.progress ? 'bg-orange-100 border-orange-300' : 'bg-orange-50 border-orange-200'}`}>
                   {(() => {
                     const NextIcon = getDepartmentIcon(forwardingAnim.nextDept);
-                    return <NextIcon className={`w-10 h-10 transition-colors duration-500 delay-1000 ${forwardingAnim.progress ? 'text-orange-700' : 'text-orange-600'}`} />;
+                    return <NextIcon className={`w-10 h-10 transition-colors duration-500 delay-700 ${forwardingAnim.progress ? 'text-orange-700' : 'text-orange-600'}`} />;
                   })()}
                   
                   {/* Pending Badge */}
-                  <div className={`absolute -top-3 -right-3 bg-white rounded-full p-1 shadow-md transition-all duration-500 ease-out delay-[1300ms] ${forwardingAnim.progress ? 'scale-100 opacity-100' : 'scale-0 opacity-0'}`}>
+                  <div className={`absolute -top-3 -right-3 bg-white rounded-full p-1 shadow-md transition-all duration-500 ease-out delay-[800ms] ${forwardingAnim.progress ? 'scale-100 opacity-100' : 'scale-0 opacity-0'}`}>
                     <Clock className="w-6 h-6 text-orange-600 animate-pulse" />
                   </div>
                 </div>
-                <span className={`font-bold text-sm text-center max-w-[120px] transition-colors duration-500 delay-1000 ${forwardingAnim.progress ? 'text-orange-800' : 'text-orange-700'}`}>{forwardingAnim.nextDept}</span>
+                <span className={`font-bold text-sm text-center max-w-[120px] transition-colors duration-500 delay-700 ${forwardingAnim.progress ? 'text-orange-800' : 'text-orange-700'}`}>{forwardingAnim.nextDept}</span>
               </div>
             </div>
             
