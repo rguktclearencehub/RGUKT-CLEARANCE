@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CheckSquare, User, FileText, Settings, LogOut, Search, Bell, HelpCircle, Book, Building, Dumbbell, Briefcase, AlertCircle, Clock, CheckCircle2, Send, ShieldCheck, FlaskConical, Microscope, Monitor, Award, UserCog, Lock, ClipboardList, ChevronDown, Wrench, Download, CloudUpload, FileCheck } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, User, FileText, Settings, LogOut, Search, Bell, HelpCircle, Book, Building, Dumbbell, Briefcase, AlertCircle, Clock, CheckCircle2, Send, ShieldCheck, FlaskConical, Microscope, Monitor, Award, UserCog, Lock, ClipboardList, ChevronDown, Wrench, Download, CloudUpload, FileCheck, Check, Mail, Phone, MapPin, Building2, PhoneCall, ExternalLink } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, query, where, getDocs, doc, getDoc, writeBatch, limit, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import emailjs from '@emailjs/browser';
@@ -8,6 +8,7 @@ import NoDueCertificate from '../components/NoDueCertificate';
 import FeeReceipt from '../components/FeeReceipt';
 import DriveUploadModal from '../components/DriveUploadModal';
 import { generateDuesPdfBlob, generateNDCPdfBlob, uploadToGoogleDrive, uploadNdcToDrive, getDriveDownloadLink, getDrivePreviewLink, downloadPdfDirectly, fetchDetailedStudentDues, type DepartmentDuesGroup } from '../utils/pdfGenerator';
+import { resolveDepartmentContact, type DepartmentContactInfo } from '../utils/departmentContacts';
 
 const EMAILJS_SERVICE_ID = 'service_yato66e';
 const EMAILJS_PUBLIC_KEY = 'uX0TI21Zg8bha0FM0';
@@ -31,6 +32,7 @@ const BTECH_HOSTELS = ["BH1 Back side", "BH2 Front side", "BH2 Backside", "GH1",
 export default function StudentDashboard() {
   const [data, setData] = useState<any>(null);
   const [selectedDept, setSelectedDept] = useState<any>(null);
+  const [deptProfiles, setDeptProfiles] = useState<Record<string, any>>({});
   const [isInitiating, setIsInitiating] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [confirmCancelDept, setConfirmCancelDept] = useState<string | null>(null);
@@ -53,7 +55,10 @@ export default function StudentDashboard() {
   const [pendingDepartments, setPendingDepartments] = useState<string[]>([]);
   const [showFeeBreakdown, setShowFeeBreakdown] = useState(false);
   const [showFeeReceipt, setShowFeeReceipt] = useState(false);
+  const [showUploadedReceipt, setShowUploadedReceipt] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isUploadSuccess, setIsUploadSuccess] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [driveModalOpen, setDriveModalOpen] = useState(false);
   const [driveUploadStatus, setDriveUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
@@ -102,6 +107,10 @@ export default function StudentDashboard() {
         if (sData.studentId) studentData.studentId = sData.studentId;
         if (sData.program) studentData.program = sData.program;
         if (sData.scholarshipId) studentData.scholarshipId = sData.scholarshipId;
+        if (sData.department) studentData.department = sData.department;
+        if (sData.branch) studentData.branch = sData.branch;
+        if (sData.presentHostel) studentData.presentHostel = sData.presentHostel;
+        if (sData.hostel) studentData.hostel = sData.hostel;
       }
       
       const crQuery = query(collection(db, 'clearanceRequests'), where('studentId', '==', user.id), limit(1));
@@ -114,6 +123,23 @@ export default function StudentDashboard() {
         if (crData.programType) {
           studentData.program = crData.programType;
           setSelectedProgram(crData.programType === 'B.Tech' ? 'B.Tech' : 'PUC');
+        }
+        if (crData.courseType) {
+          studentData.department = crData.courseType;
+          setSelectedBranch(crData.courseType);
+        }
+        if (crData.pucCourseType) {
+          setSelectedCourseType(crData.pucCourseType as any);
+        }
+        if (crData.presentHostel) {
+          studentData.presentHostel = crData.presentHostel;
+          setSelectedHostel(crData.presentHostel);
+        }
+        if (crData.ndcDriveFileId || crData.ndcDriveUrl || crData.ndcDownloadUrl) {
+          setDriveUploadStatus('success');
+          if (crData.ndcDriveUrl || crData.ndcDownloadUrl) {
+            setDriveShareableUrl(crData.ndcDriveUrl || crData.ndcDownloadUrl);
+          }
         }
         
         const dcQuery = query(collection(db, 'departmentClearances'), where('requestId', '==', crDoc.id));
@@ -159,6 +185,18 @@ export default function StudentDashboard() {
         }
       }
       
+      // Load all official department contact profiles from Firestore
+      try {
+        const profSnap = await getDocs(collection(db, 'departmentProfiles'));
+        const pMap: Record<string, any> = {};
+        profSnap.forEach(d => {
+          pMap[d.id] = d.data();
+        });
+        setDeptProfiles(pMap);
+      } catch (profErr) {
+        console.warn('Could not load department profiles:', profErr);
+      }
+
       setData(studentData);
     } catch(err) {
       console.error(err);
@@ -308,16 +346,8 @@ export default function StudentDashboard() {
                 100% { transform: scale(1); opacity: 1; }
               }
             </style>
-            <table width="72" height="72" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 20px auto; background-color: white; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.1); animation: popIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;">
-              <tr>
-                <td align="center" valign="middle" style="height: 72px;">
-                  <div style="width:72px; height:72px; line-height:72px; text-align:center; border-radius:50%; font-size:40px; color:#16a34a; font-weight:bold;">
-                    &#10003;
-                  </div>
-                </td>
-              </tr>
-            </table>
-            <h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">Application Submitted!</h2>
+            <img src="https://rguktclearance.vercel.app/logo.png" alt="RGUKT Logo" width="80" style="width: 80px; max-width: 100%; height: auto; margin-bottom: 16px; display: inline-block;" />
+      <h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">Application Submitted!</h2>
           </div>
           
           <div style="padding: 30px;">
@@ -365,6 +395,7 @@ export default function StudentDashboard() {
             {
               to_name: user.name,
               to_email: user.email,
+              subject: "Application Submitted - RGUKT Clearance",
               html_message: htmlMessage
             },
             EMAILJS_PUBLIC_KEY
@@ -407,12 +438,15 @@ export default function StudentDashboard() {
     if (!file) return;
 
     if (file.size > 5 * 1024 * 1024) {
-      alert("File is too large. Please upload a file smaller than 5MB.");
+      setUploadError("File is too large (max 5MB).");
+      setTimeout(() => setUploadError(null), 4000);
       return;
     }
 
     try {
       setIsUploading(true);
+      setUploadError(null);
+      setIsUploadSuccess(false);
       const reader = new FileReader();
       
       reader.onload = async (event) => {
@@ -421,8 +455,8 @@ export default function StudentDashboard() {
           const appsScriptUrl = import.meta.env.VITE_APPS_SCRIPT_WEB_APP_URL;
           
           if (!appsScriptUrl) {
-            alert("Upload failed: Web App URL is not configured.");
-            setIsUploading(false);
+            setUploadError("Upload failed: System misconfigured.");
+            setTimeout(() => setUploadError(null), 4000);
             return;
           }
 
@@ -450,15 +484,18 @@ export default function StudentDashboard() {
               updatedAt: new Date().toISOString()
             });
             
-            alert('Receipt uploaded successfully!');
+            setIsUploadSuccess(true);
+            setTimeout(() => setIsUploadSuccess(false), 3000);
             await fetchDashboardData();
           } else {
             console.error('Upload failed on server:', result);
-            alert('Failed to upload receipt: ' + (result.message || 'Unknown error'));
+            setUploadError('Failed: ' + (result.message || 'Unknown error'));
+            setTimeout(() => setUploadError(null), 4000);
           }
         } catch (error) {
           console.error("Error uploading file:", error);
-          alert("Error uploading file. Please ensure the Apps Script URL is correct.");
+          setUploadError("Connection error. Try again.");
+          setTimeout(() => setUploadError(null), 4000);
         } finally {
           setIsUploading(false);
           // Reset file input
@@ -466,11 +503,18 @@ export default function StudentDashboard() {
         }
       };
       
+      reader.onerror = () => {
+        setUploadError("Failed to read file locally.");
+        setIsUploading(false);
+        setTimeout(() => setUploadError(null), 4000);
+      };
+      
       reader.readAsDataURL(file);
     } catch (err) {
       console.error("Upload error:", err);
-      alert("Failed to upload receipt");
+      setUploadError("Error starting upload.");
       setIsUploading(false);
+      setTimeout(() => setUploadError(null), 4000);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -578,14 +622,23 @@ export default function StudentDashboard() {
       const blob = await generateNDCPdfBlob({
         name: data.name,
         studentId: data.studentId,
-        program: data.program,
-        department: data.department,
-        hostel: data.presentHostel
-      });
+        program: data.clearanceRequest?.programType || data.program,
+        department: data.clearanceRequest?.courseType || data.department,
+        hostel: data.clearanceRequest?.presentHostel || data.presentHostel
+      }, data.clearanceRequest);
       const fileName = `${data.studentId}_Official_No_Due_Certificate.pdf`;
       const res = await uploadNdcToDrive(blob, fileName);
       setDriveShareableUrl(res.shareableUrl || null);
       setDriveUploadStatus('success');
+
+      if (data.clearanceRequest?.id && (res.shareableUrl || res.fileId)) {
+        await updateDoc(doc(db, 'clearanceRequests', data.clearanceRequest.id), {
+          ndcDriveFileId: res.fileId || null,
+          ndcDriveUrl: res.shareableUrl || null,
+          ndcDownloadUrl: res.downloadUrl || null,
+          updatedAt: new Date().toISOString()
+        }).catch(err => console.warn('Could not persist drive url:', err));
+      }
     } catch (e: any) {
       console.error('Google Drive upload failed:', e);
       setDriveErrorMessage(e.message || 'Failed to save certificate to Google Drive.');
@@ -776,10 +829,10 @@ export default function StudentDashboard() {
                 <div className="flex items-center w-full justify-between px-2">
                   {currentDepartments.map((deptName: string, index: number) => {
                     const dept = deps.find((d: any) => d.departmentName === deptName);
-                    const isApproved = dept?.status === 'APPROVED';
+                    const isApproved = dept?.status === 'APPROVED' || dept?.forwarded;
                     const isRejected = dept?.status === 'REJECTED';
-                    const isPending = dept?.status === 'PENDING';
-                    const isLocked = dept?.status === 'LOCKED' || !dept;
+                    const isPending = dept?.status === 'PENDING' && !dept?.forwarded;
+                    const isLocked = (dept?.status === 'LOCKED' || !dept) && !isApproved && !isPending && !isRejected;
                     
                     return (
                       <div key={deptName} className={`flex items-center ${index < currentDepartments.length - 1 ? 'flex-1' : ''}`}>
@@ -836,7 +889,7 @@ export default function StudentDashboard() {
           )}
 
           {/* Clearance Completed Banner - Below Flow Card, Above Department Status */}
-          {deps.length === currentDepartments.length && deps.every((d: any) => d.status === 'APPROVED') && (
+          {deps.length === currentDepartments.length && deps.every((d: any) => d.status === 'APPROVED' || d.forwarded) && (
             <div className="mb-8 flex justify-center animate-in fade-in zoom-in duration-500 fill-mode-both">
               <div className="bg-green-50 border border-green-200 rounded-2xl p-6 md:p-8 w-full max-w-3xl text-center shadow-sm relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1.5 bg-green-500"></div>
@@ -861,10 +914,10 @@ export default function StudentDashboard() {
                         const blob = await generateNDCPdfBlob({
                           name: data.name,
                           studentId: data.studentId,
-                          program: data.program,
-                          department: data.department,
-                          hostel: data.presentHostel
-                        });
+                          program: data.clearanceRequest?.programType || data.program,
+                          department: data.clearanceRequest?.courseType || data.department,
+                          hostel: data.clearanceRequest?.presentHostel || data.presentHostel
+                        }, data.clearanceRequest);
                         downloadPdfDirectly(blob, `${data.studentId}_Official_No_Due_Certificate.pdf`);
                       } catch (e: any) {
                         alert('Download failed: ' + (e.message || e));
@@ -878,10 +931,24 @@ export default function StudentDashboard() {
                   <button
                     onClick={handleSaveNdcToDrive}
                     disabled={driveUploadStatus === 'uploading'}
-                    className="px-6 py-3 bg-blue-600 text-white rounded-xl font-label-md text-sm font-bold shadow-md hover:bg-blue-700 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-60"
+                    className="px-6 py-3 rounded-xl font-label-md text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-60 bg-blue-600 hover:bg-blue-700 text-white"
                   >
-                    <CloudUpload className="w-5 h-5" />
-                    {driveUploadStatus === 'uploading' ? 'Saving...' : 'Save to Drive'}
+                    {driveUploadStatus === 'success' ? (
+                      <>
+                        <Check className="w-5 h-5 text-white animate-in zoom-in-50 duration-200" />
+                        <span>Saved to Drive</span>
+                      </>
+                    ) : driveUploadStatus === 'uploading' ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CloudUpload className="w-5 h-5" />
+                        <span>Save to Drive</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -948,36 +1015,61 @@ export default function StudentDashboard() {
                         </button>
                         
                         {/* Only show upload if FO is the current pending department */}
-                        {deps.find((d: any) => d.status === 'PENDING')?.departmentName === 'FO' && (
-                          <div className="relative">
-                            <input 
-                              type="file" 
-                              accept="image/*,.pdf" 
-                              className="hidden" 
-                              ref={fileInputRef}
-                              onChange={handleReceiptUpload}
-                              disabled={isUploading}
-                            />
-                            <button 
-                              onClick={() => fileInputRef.current?.click()}
-                              disabled={isUploading}
-                              className="font-label-sm font-bold text-blue-700 bg-blue-100 hover:bg-blue-200 transition-colors px-3 py-1 rounded-full border border-blue-300 flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
-                            >
-                              {isUploading ? (
-                                <span className="flex items-center gap-1">
-                                  <div className="w-3 h-3 border-2 border-blue-700 border-t-transparent rounded-full animate-spin"></div>
-                                  Uploading...
-                                </span>
-                              ) : request.feeReceiptUrl ? (
-                                <>
-                                  <CheckCircle2 className="w-4 h-4" /> Receipt Uploaded (Update)
-                                </>
-                              ) : (
-                                <>
-                                  <FileText className="w-4 h-4" /> Upload Receipt
-                                </>
+                        {deps.find((d: any) => d.status === 'PENDING' && !d.forwarded)?.departmentName === 'FO' && (
+                          <div className="flex items-center gap-2 relative">
+                            {request.feeReceiptUrl && !isUploadSuccess && (
+                              <button
+                                onClick={() => setShowUploadedReceipt(true)}
+                                className="font-label-sm font-semibold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 transition-colors px-3 py-1.5 rounded-full border border-emerald-300 flex items-center gap-1.5 shadow-sm cursor-pointer"
+                                title="View uploaded receipt"
+                              >
+                                <CheckCircle2 className="w-4 h-4" />
+                                Receipt Uploaded
+                              </button>
+                            )}
+                            <div className="relative">
+                              <input 
+                                type="file" 
+                                accept="image/*,.pdf" 
+                                className="hidden" 
+                                ref={fileInputRef}
+                                onChange={handleReceiptUpload}
+                                disabled={isUploading}
+                              />
+                              <button 
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isUploading}
+                                className={`font-label-sm font-bold transition-all duration-300 px-4 py-1.5 rounded-full border flex items-center gap-2 shadow-sm cursor-pointer disabled:opacity-80 ${
+                                  isUploadSuccess 
+                                    ? 'text-green-700 bg-green-100 hover:bg-green-200 border-green-300'
+                                    : 'text-blue-700 bg-blue-100 hover:bg-blue-200 border-blue-300'
+                                }`}
+                              >
+                                {isUploading ? (
+                                  <span className="flex items-center gap-1.5">
+                                    <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                                    Uploading...
+                                  </span>
+                                ) : isUploadSuccess ? (
+                                  <span className="flex items-center gap-1.5 animate-in zoom-in duration-300">
+                                    <CheckCircle2 className="w-4 h-4" /> Uploaded Successfully!
+                                  </span>
+                                ) : request.feeReceiptUrl ? (
+                                  <>
+                                    <FileText className="w-4 h-4" /> Update
+                                  </>
+                                ) : (
+                                  <>
+                                    <FileText className="w-4 h-4" /> Upload Receipt
+                                  </>
+                                )}
+                              </button>
+                              {uploadError && (
+                                <div className="absolute top-full left-0 mt-2 whitespace-nowrap bg-red-100 text-red-700 text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm border border-red-200 animate-in fade-in slide-in-from-top-1 z-10">
+                                  {uploadError}
+                                </div>
                               )}
-                            </button>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -986,13 +1078,17 @@ export default function StudentDashboard() {
                 </div>
                 {request && (
                   <span className={`font-label-md font-medium ${
-                    deps.length === currentDepartments.length && deps.every((d: any) => d.status === 'APPROVED')
+                    deps.length === currentDepartments.length && deps.every((d: any) => d.status === 'APPROVED' || d.forwarded)
                       ? 'text-green-600 font-bold'
+                      : deps.some((d: any) => d.status === 'REJECTED') || request.status === 'REJECTED'
+                      ? 'text-red-600 font-bold'
                       : 'text-secondary'
                   }`}>
                     Overall Status: {
-                      deps.length === currentDepartments.length && deps.every((d: any) => d.status === 'APPROVED') 
+                      deps.length === currentDepartments.length && deps.every((d: any) => d.status === 'APPROVED' || d.forwarded) 
                         ? 'APPROVED' 
+                        : deps.some((d: any) => d.status === 'REJECTED')
+                        ? 'REJECTED'
                         : request.status
                     }
                   </span>
@@ -1075,13 +1171,21 @@ export default function StudentDashboard() {
                             <span className="font-label-sm text-xs text-outline font-medium">Ref: {dept.id.substring(0,6)}</span>
                             <button 
                               onClick={() => setSelectedDept(dept)}
-                              className="px-4 py-2 border border-outline text-primary rounded-lg font-label-sm text-xs font-semibold hover:bg-surface-variant/50 transition-colors"
+                              className="px-4 py-2 border border-outline text-primary rounded-lg font-label-sm text-xs font-semibold hover:bg-surface-variant/50 transition-colors cursor-pointer"
                             >
                               View Details
                             </button>
                           </>
                         ) : (
-                          <span className="font-label-sm text-xs text-outline font-medium">Pending Initiation</span>
+                          <>
+                            <span className="font-label-sm text-xs text-outline font-medium">Pending Initiation</span>
+                            <button 
+                              onClick={() => setSelectedDept({ departmentName: deptName, id: 'Pending', status: 'NOT_SENT', remarks: 'Clearance request not yet initiated.' })}
+                              className="px-3.5 py-1.5 border border-outline/80 text-primary rounded-lg font-label-sm text-xs font-semibold hover:bg-surface-variant/50 transition-colors cursor-pointer"
+                            >
+                              View Details
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -1097,7 +1201,7 @@ export default function StudentDashboard() {
                       setDepartmentsToSubmit(unsent);
                       setShowConfirmSubmit(true);
                     }}
-                    className="px-6 py-3 bg-blue-600 text-white rounded-xl font-label-md text-sm font-bold shadow hover:bg-blue-700 transition-colors flex items-center gap-2"
+                    className="px-6 py-3 bg-blue-600 text-white rounded-xl font-label-md text-sm font-bold shadow hover:bg-blue-700 transition-colors flex items-center gap-2 cursor-pointer"
                   >
                     <Send className="w-5 h-5" />
                     Initiate Clearance Flow
@@ -1121,7 +1225,7 @@ export default function StudentDashboard() {
                 </div>
               </div>
               
-              {deps.filter((d: any) => d.status === 'APPROVED').length === 0 ? (
+              {deps.filter((d: any) => d.status === 'APPROVED' || d.forwarded).length === 0 ? (
                 <div className="flex flex-col items-center justify-center flex-1 text-center py-12">
                   <ShieldCheck className="w-16 h-16 text-outline-variant mb-4" />
                   <h3 className="font-headline-sm text-lg font-bold text-on-surface mb-2">No Clearances Yet</h3>
@@ -1130,7 +1234,7 @@ export default function StudentDashboard() {
               ) : (
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                   {deps
-                    .filter((d: any) => d.status === 'APPROVED')
+                    .filter((d: any) => d.status === 'APPROVED' || d.forwarded)
                     .sort((a: any, b: any) => currentDepartments.indexOf(a.departmentName) - currentDepartments.indexOf(b.departmentName))
                     .map((dept: any) => (
                     <div key={dept.id} className="bg-surface border border-surface-variant rounded-2xl p-5 hover:border-primary/30 transition-colors shadow-sm flex flex-col">
@@ -1145,7 +1249,7 @@ export default function StudentDashboard() {
                           </div>
                         </div>
                         <span className="px-3 py-1.5 bg-green-500/10 text-green-700 text-xs font-bold rounded-full flex items-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Cleared
+                          <CheckCircle2 className="w-3.5 h-3.5" /> {dept.status === 'APPROVED' ? 'Cleared' : 'Forwarded'}
                         </span>
                       </div>
                       
@@ -1154,11 +1258,14 @@ export default function StudentDashboard() {
                         <p className="font-body-sm text-on-surface text-sm leading-relaxed">{dept.remarks || "No pending dues. Clearance granted successfully."}</p>
                       </div>
                       
-                      <div className="mt-4 flex items-center justify-between text-xs font-label-sm text-outline px-1">
-                        <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> Approved on</span>
-                        <span className="font-medium text-on-surface-variant">
-                          {dept.updatedAt ? new Date(dept.updatedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Recently'}
-                        </span>
+                      <div className="mt-4 pt-3 border-t border-surface-variant/50 flex items-center justify-between text-xs font-label-sm text-outline px-1">
+                        <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> Approved on: <strong className="text-on-surface-variant font-medium">{dept.updatedAt ? new Date(dept.updatedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Recently'}</strong></span>
+                        <button 
+                          onClick={() => setSelectedDept(dept)}
+                          className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg font-bold transition-all text-xs flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <UserCog className="w-3.5 h-3.5" /> View Details
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -1244,13 +1351,11 @@ export default function StudentDashboard() {
       {/* Department Details Modal */}
       {selectedDept && (
         <div className="fixed inset-0 bg-primary/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-          <div className={`bg-surface-container-lowest rounded-2xl p-5 sm:p-6 w-full max-h-[85vh] flex flex-col shadow-2xl border border-surface-variant animate-in fade-in zoom-in-95 duration-200 ${
-            (selectedDept.departmentName === 'COE' && selectedDept.academicRecord) || (selectedDept.departmentName === 'Scholarship Office' && selectedDept.scholarshipDetails) ? 'max-w-lg' : 'max-w-sm'
-          }`}>
+          <div className="bg-surface-container-lowest rounded-3xl p-5 sm:p-6 w-full max-w-lg max-h-[88vh] flex flex-col shadow-2xl border border-surface-variant animate-in fade-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="flex justify-between items-start mb-4 shrink-0 pb-3 border-b border-surface-variant/50">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant shrink-0">
+                <div className="w-11 h-11 rounded-xl bg-surface-container flex items-center justify-center text-on-surface-variant shrink-0 border border-outline-variant/30">
                   {getIcon(selectedDept.departmentName)}
                 </div>
                 <div>
@@ -1260,7 +1365,7 @@ export default function StudentDashboard() {
               </div>
               <button 
                 onClick={() => setSelectedDept(null)}
-                className="text-on-surface-variant hover:text-primary transition-colors p-1"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-variant/50 transition-colors cursor-pointer"
               >
                 ✕
               </button>
@@ -1268,8 +1373,68 @@ export default function StudentDashboard() {
             
             {/* Scrollable Body */}
             <div className="flex-1 overflow-y-auto pr-1 space-y-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              <div className="flex justify-between items-center py-2 border-b border-surface-variant/50">
-                <span className="text-on-surface-variant font-label-md text-xs font-semibold">Status</span>
+              {/* Official Department Authority & Contact Card */}
+              {(() => {
+                const contact = resolveDepartmentContact(selectedDept.departmentName, deptProfiles);
+                return (
+                  <div className="bg-gradient-to-br from-blue-50/80 via-slate-50 to-blue-50/40 rounded-2xl p-4 border border-blue-100 shadow-xs space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-blue-100">
+                      <div className="flex items-center gap-1.5">
+                        <UserCog className="w-4 h-4 text-blue-700" />
+                        <span className="text-xs font-bold text-blue-950 uppercase tracking-wider">
+                          Department Authority & Contact
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full border border-blue-200">
+                        Official Contact
+                      </span>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0 mt-0.5">
+                        {contact.officerName.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-headline-sm text-sm font-bold text-slate-900 leading-tight">
+                          {contact.officerName}
+                        </h4>
+                        <p className="text-xs font-semibold text-blue-700 mt-0.5">
+                          {contact.designation}
+                        </p>
+                        {contact.officeLocation && (
+                          <p className="text-[11.5px] text-slate-600 flex items-start gap-1.5 mt-1.5 font-medium">
+                            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                            <span>{contact.officeLocation}</span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Quick Direct Actions: Email & Phone */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                      <a
+                        href={`mailto:${contact.email}`}
+                        className="flex items-center justify-center gap-2 px-3 py-2 bg-white hover:bg-blue-50 text-blue-800 font-bold text-xs rounded-xl border border-blue-200 shadow-2xs transition-all hover:scale-[1.02] active:scale-95 group"
+                        title={`Send email to ${contact.email}`}
+                      >
+                        <Mail className="w-3.5 h-3.5 text-blue-600 group-hover:scale-110 transition-transform shrink-0" />
+                        <span className="truncate">{contact.email}</span>
+                      </a>
+                      <a
+                        href={`tel:${contact.phoneNumber.replace(/[^0-9+]/g, '')}`}
+                        className="flex items-center justify-center gap-2 px-3 py-2 bg-white hover:bg-emerald-50 text-emerald-800 font-bold text-xs rounded-xl border border-emerald-200 shadow-2xs transition-all hover:scale-[1.02] active:scale-95 group"
+                        title={`Call ${contact.phoneNumber}`}
+                      >
+                        <Phone className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform shrink-0" />
+                        <span className="truncate">{contact.phoneNumber}</span>
+                      </a>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="flex justify-between items-center py-2.5 px-3 bg-surface-variant/20 rounded-xl border border-surface-variant/50">
+                <span className="text-on-surface-variant font-label-md text-xs font-semibold">Clearance Status</span>
                 <div className="flex flex-col items-end">
                   <div className="flex items-center gap-2">
                     {selectedDept.status === 'APPROVED' && (
@@ -1277,14 +1442,29 @@ export default function StudentDashboard() {
                         <CheckCircle2 className="w-3.5 h-3.5" /> Approved
                       </span>
                     )}
+                    {selectedDept.status === 'PENDING' && selectedDept.forwarded && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 font-label-sm text-xs font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Forwarded
+                      </span>
+                    )}
                     {selectedDept.status === 'REJECTED' && (
                       <span className="px-2.5 py-0.5 rounded-full bg-error-container text-on-error-container font-label-sm text-xs font-semibold flex items-center gap-1">
                         <AlertCircle className="w-3.5 h-3.5" /> Rejected
                       </span>
                     )}
-                    {selectedDept.status === 'PENDING' && (
+                    {selectedDept.status === 'LOCKED' && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-surface-variant text-on-surface-variant font-label-sm text-xs font-semibold flex items-center gap-1">
+                        <Lock className="w-3.5 h-3.5" /> Locked
+                      </span>
+                    )}
+                    {selectedDept.status === 'PENDING' && !selectedDept.forwarded && (
                       <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-label-sm text-xs font-semibold flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5" /> Pending
+                      </span>
+                    )}
+                    {selectedDept.status === 'NOT_SENT' && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-surface-variant text-on-surface-variant font-label-sm text-xs font-semibold flex items-center gap-1">
+                        Not Initiated
                       </span>
                     )}
                   </div>
@@ -1487,7 +1667,7 @@ export default function StudentDashboard() {
 
             {/* Footer */}
             <div className="pt-4 mt-2 border-t border-surface-variant/50 shrink-0">
-              {selectedDept.status === 'PENDING' ? (
+              {selectedDept.status === 'PENDING' && !selectedDept.forwarded ? (
                 <div className="flex gap-3">
                   <button 
                     onClick={() => setConfirmCancelDept(selectedDept.departmentName)} 
@@ -1511,6 +1691,12 @@ export default function StudentDashboard() {
                         const { updateDoc } = await import('firebase/firestore');
                         const dcRef = doc(db, 'departmentClearances', selectedDept.id);
                         await updateDoc(dcRef, { status: 'PENDING' });
+                        
+                        const otherRejected = deps.filter((d: any) => d.id !== selectedDept.id && d.status === 'REJECTED');
+                        if (otherRejected.length === 0) {
+                          const crRef = doc(db, 'clearanceRequests', request.id);
+                          await updateDoc(crRef, { status: 'PENDING' });
+                        }
                         await fetchDashboardData();
                         setSelectedDept(null);
                       } catch (err) {
@@ -1550,10 +1736,11 @@ export default function StudentDashboard() {
           student={{
             name: data.name,
             studentId: data.studentId,
-            program: data.program,
-            department: data.department,
-            hostel: data.presentHostel
+            program: data.clearanceRequest?.programType || data.program,
+            department: data.clearanceRequest?.courseType || data.department,
+            hostel: data.clearanceRequest?.presentHostel || data.presentHostel
           }}
+          clearanceData={data.clearanceRequest}
           onClose={() => setShowCertificate(false)}
         />
       )}
@@ -2080,6 +2267,49 @@ export default function StudentDashboard() {
           paymentReferenceId={txnId || data.clearanceRequest.paymentReferenceId || 'VERIFIED-FO'}
           onClose={() => setShowFeeReceipt(false)}
         />
+      )}
+
+      {/* Uploaded Receipt Viewer Modal */}
+      {showUploadedReceipt && data?.clearanceRequest?.feeReceiptUrl && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-surface w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b border-surface-variant flex justify-between items-center bg-surface-container-lowest shrink-0">
+              <h3 className="font-headline-sm font-bold text-on-surface flex items-center gap-2">
+                <FileText className="w-5 h-5 text-primary" />
+                Uploaded Receipt
+              </h3>
+              <button 
+                onClick={() => setShowUploadedReceipt(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-variant transition-colors text-on-surface-variant"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4 sm:p-6 bg-surface-variant/20 flex-1 overflow-auto flex justify-center items-center min-h-[50vh]">
+              {data.clearanceRequest.feeReceiptUrl.match(/\.(jpeg|jpg|gif|png)$/i) ? (
+                <img src={data.clearanceRequest.feeReceiptUrl} alt="Receipt" className="max-w-full max-h-full object-contain rounded-lg shadow-sm" />
+              ) : (
+                <iframe src={data.clearanceRequest.feeReceiptUrl} className="w-full h-full min-h-[60vh] rounded-lg border border-surface-variant bg-white" title="Receipt Document" />
+              )}
+            </div>
+            <div className="px-6 py-4 bg-surface-container-lowest border-t border-surface-variant flex justify-end shrink-0 gap-3">
+              <a 
+                href={data.clearanceRequest.feeReceiptUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="px-5 py-2.5 bg-blue-50 text-blue-700 font-label-md font-bold rounded-xl hover:bg-blue-100 transition-colors border border-blue-200 shadow-sm"
+              >
+                Open in New Tab
+              </a>
+              <button 
+                onClick={() => setShowUploadedReceipt(false)}
+                className="px-5 py-2.5 bg-primary text-on-primary font-label-md font-bold rounded-xl hover:bg-primary/90 transition-colors shadow-sm"
+              >
+                Close Viewer
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Google Drive Upload Animated Modal */}

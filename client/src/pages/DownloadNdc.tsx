@@ -9,7 +9,7 @@ import {
   getDrivePreviewLink,
   convertDriveShareableToDownloadUrl
 } from '../utils/pdfGenerator';
-import { Award, Download, ExternalLink, ArrowLeft, CheckCircle2, AlertCircle, CloudUpload } from 'lucide-react';
+import { Award, Download, ExternalLink, ArrowLeft, CheckCircle2, AlertCircle, CloudUpload, Check } from 'lucide-react';
 import DriveUploadModal from '../components/DriveUploadModal';
 
 export default function DownloadNdc() {
@@ -47,9 +47,11 @@ export default function DownloadNdc() {
             requestData = { id: reqSnap.id, ...reqSnap.data() };
             if (requestData.ndcDriveFileId) {
               setDriveFileId(requestData.ndcDriveFileId);
+              setDriveUploadStatus('success');
             }
             if (requestData.ndcDriveUrl || requestData.ndcDownloadUrl) {
               setDriveUrl(requestData.ndcDriveUrl || requestData.ndcDownloadUrl);
+              setDriveUploadStatus('success');
             }
           }
         }
@@ -59,7 +61,7 @@ export default function DownloadNdc() {
           name: requestData?.studentName || requestData?.student?.name || requestData?.name || sid,
           studentId: sid,
           program: requestData?.programType || requestData?.program || 'B.Tech',
-          department: requestData?.department || requestData?.branch || '',
+          department: requestData?.courseType || requestData?.department || requestData?.branch || '',
           hostel: requestData?.presentHostel || requestData?.hostel || ''
         };
 
@@ -192,10 +194,24 @@ export default function DownloadNdc() {
                 <button
                   onClick={handleSyncToDrive}
                   disabled={isUploadingToDrive}
-                  className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold py-2.5 px-4 rounded-xl shadow-xs flex items-center justify-center gap-2 text-xs transition-colors cursor-pointer disabled:opacity-50"
+                  className="w-full font-bold py-2.5 px-4 rounded-xl shadow-xs flex items-center justify-center gap-2 text-xs transition-colors cursor-pointer disabled:opacity-50 bg-blue-600 hover:bg-blue-700 text-white"
                 >
-                  <CloudUpload className="w-4 h-4" />
-                  {isUploadingToDrive ? 'Uploading to Drive...' : 'Save to Google Drive'}
+                  {driveUploadStatus === 'success' ? (
+                    <>
+                      <Check className="w-4 h-4 text-white animate-in zoom-in-50 duration-200" />
+                      <span>Saved to Google Drive</span>
+                    </>
+                  ) : isUploadingToDrive ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Uploading to Drive...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CloudUpload className="w-4 h-4 text-white" />
+                      <span>Save to Google Drive</span>
+                    </>
+                  )}
                 </button>
 
                 {(driveFileId || driveUrl) && (

@@ -2,9 +2,10 @@ import { useEffect, useState, useRef } from 'react';
 import { db } from '../firebase';
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, setDoc, limit, increment, deleteDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FileText, Settings, LogOut, Search, Bell, CheckCircle2, AlertCircle, Clock, ShieldCheck, CheckSquare, Printer, Building2, FlaskConical, BookOpen, Monitor, GraduationCap, Briefcase, Dumbbell, Award, ClipboardList, ChevronLeft, Wrench } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, Settings, LogOut, Search, Bell, CheckCircle2, AlertCircle, Clock, ShieldCheck, CheckSquare, Printer, Building2, FlaskConical, BookOpen, Monitor, GraduationCap, Briefcase, Dumbbell, Award, ClipboardList, ChevronLeft, Wrench, Mail, Phone, MapPin, UserCog, Sparkles, Check } from 'lucide-react';
 import emailjs from '@emailjs/browser';
 import { generateDuesPdfBlob, generateNDCPdfBlob, uploadToGoogleDrive, uploadNdcToDrive, getDriveDownloadLink, getDrivePreviewLink, convertDriveShareableToDownloadUrl, fetchDetailedStudentDues, downloadPdfDirectly, type DepartmentDuesGroup } from '../utils/pdfGenerator';
+import { getDepartmentDefaultContact, resolveDepartmentContact, type DepartmentContactInfo } from '../utils/departmentContacts';
 
 const getDepartmentIcon = (deptName: string | null) => {
   if (!deptName) return Building2;
@@ -55,19 +56,30 @@ export default function DepartmentDashboard() {
   const [isFetchingFee, setIsFetchingFee] = useState(false);
   const [isDuesAdded, setIsDuesAdded] = useState(false);
   const [isAddingDues, setIsAddingDues] = useState(false);
+  const [isFoDuePaid, setIsFoDuePaid] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [showConfirmPopup, setShowConfirmPopup] = useState(false);
+  const [showUploadedReceiptModal, setShowUploadedReceiptModal] = useState(false);
   const [isForwarding, setIsForwarding] = useState(false);
   const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [forwardingAnim, setForwardingAnim] = useState<{ isAnimating: boolean; nextDept: string | null; progress: boolean; completed: boolean }>({ isAnimating: false, nextDept: null, progress: false, completed: false });
   const [actionType, setActionType] = useState<'APPROVE' | 'REJECT' | null>(null);
   const [departmentName, setDepartmentName] = useState('Department');
-  const [currentTab, setCurrentTab] = useState<'requests' | 'hostelPenalty' | 'dswPenalty' | 'labPenalty' | 'libraryPenalty' | 'itInfraPenalty' | 'profile'>('requests');
+  const [currentTab, setCurrentTab] = useState<'requests' | 'students' | 'hostelPenalty' | 'dswPenalty' | 'labPenalty' | 'libraryPenalty' | 'itInfraPenalty' | 'profile'>('requests');
+  const [studentsSubTab, setStudentsSubTab] = useState<'approved' | 'rejected'>('approved');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [studentsHostelFilter, setStudentsHostelFilter] = useState<string>('ALL');
   const [selectedHostelView, setSelectedHostelView] = useState<string | null>(null);
   const [wardenName, setWardenName] = useState('');
+  const [profileOfficerName, setProfileOfficerName] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
+  const [profilePhone, setProfilePhone] = useState('');
+  const [profileDesignation, setProfileDesignation] = useState('');
+  const [profileOfficeLocation, setProfileOfficeLocation] = useState('');
+  const [profileSaveSuccess, setProfileSaveSuccess] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   
   const [selectedBranchLab, setSelectedBranchLab] = useState<string | null>(null);
@@ -338,7 +350,39 @@ export default function DepartmentDashboard() {
     setMaintenanceFee('');
     setReferenceId(c.paymentReferenceId || c.referenceId || '');
     setIsDuesAdded(false);
+    setIsFoDuePaid(false);
     setIsAddingDues(false);
+    setShowUploadedReceiptModal(false);
+
+    if (departmentName === 'FO' && c?.student?.studentId) {
+      setIsFetchingFee(true);
+      (async () => {
+        try {
+          let reqData: any = null;
+          if (c.requestId) {
+            try {
+              const rSnap = await getDoc(doc(db, 'clearanceRequests', c.requestId));
+              if (rSnap.exists()) {
+                reqData = { id: rSnap.id, ...rSnap.data() };
+              }
+            } catch (e) {
+              console.warn('Could not load clearance request document:', e);
+            }
+          }
+          const { groups, grandTotal: total } = await fetchDetailedStudentDues(
+            c.student.studentId,
+            reqData || c
+          );
+          setFetchedAllDeptDues(groups);
+          setFetchedFee(total);
+        } catch (err) {
+          console.error('Error fetching FO dues on select:', err);
+        } finally {
+          setIsFetchingFee(false);
+        }
+      })();
+    }
+
     if (c.academicStatus) {
       const isBTech = getClearanceProgram(c) === 'B.Tech';
       const rawRecords = (c.academicRecord as Record<string, 'PASS' | 'REMEDIAL'>) || {};
@@ -486,8 +530,32 @@ export default function DepartmentDashboard() {
     const user = JSON.parse(userStr);
     const exactName = getExactDeptName(user);
     setDepartmentName(exactName);
-    setWardenName(user.wardenName || '');
+    setWardenName(user.wardenName || user.name || '');
     if (exactName === 'Engg Labs') setIsEnggLabsProxy(true);
+
+    const loadProfile = async (deptName: string) => {
+      try {
+        const pSnap = await getDoc(doc(db, 'departmentProfiles', deptName));
+        if (pSnap.exists()) {
+          const pData = pSnap.data();
+          setProfileOfficerName(pData.officerName || user.officerName || user.name || user.wardenName || '');
+          setProfileEmail(pData.email || user.email || '');
+          setProfilePhone(pData.phoneNumber || pData.phone || user.phoneNumber || user.phone || '');
+          setProfileDesignation(pData.designation || user.designation || '');
+          setProfileOfficeLocation(pData.officeLocation || user.officeLocation || '');
+        } else {
+          const def = getDepartmentDefaultContact(deptName);
+          setProfileOfficerName(user.officerName || user.name || user.wardenName || def.officerName);
+          setProfileEmail(user.email || def.email);
+          setProfilePhone(user.phoneNumber || user.phone || def.phoneNumber);
+          setProfileDesignation(user.designation || def.designation);
+          setProfileOfficeLocation(user.officeLocation || def.officeLocation);
+        }
+      } catch (err) {
+        console.warn('Could not load department profile:', err);
+      }
+    };
+    loadProfile(exactName);
 
     fetchClearances(exactName);
 
@@ -667,9 +735,12 @@ export default function DepartmentDashboard() {
       return;
     }
 
-    const currentDisplayDue = (isDuesAdded ? Number(feeAmount) : 0) || Number(selectedClearance.totalFeeDue) || 0;
-    if (actType === 'APPROVE' && departmentName === 'FO' && currentDisplayDue > 0 && !referenceId.trim()) {
-      alert("Please enter the Payment Reference ID to approve this request.");
+    const currentDisplayDue = departmentName === 'FO'
+      ? ((fetchedFee !== null ? Number(fetchedFee) : 0) || Number(selectedClearance.totalFeeDue) || 0)
+      : ((isDuesAdded ? Number(feeAmount) : 0) || Number(selectedClearance.totalFeeDue) || 0);
+
+    if (actType === 'APPROVE' && departmentName === 'FO' && currentDisplayDue > 0 && (!isFoDuePaid || !referenceId.trim())) {
+      alert("Please mark dues as paid and enter the Payment Reference ID to approve this request.");
       return;
     }
 
@@ -763,6 +834,79 @@ export default function DepartmentDashboard() {
       
       if (newStatus === 'REJECTED') {
         crUpdateData.status = 'REJECTED';
+        
+        // Send Rejection Email
+        if (selectedClearance.student?.email) {
+          const rejectHtmlMessage = `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; border: 1px solid #fecaca; border-radius: 12px; background-color: #ffffff; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+              <div style="background: linear-gradient(135deg, #ef4444, #dc2626); padding: 24px 20px; text-align: center; color: white;">
+                <img src="https://rguktclearance.vercel.app/logo.png" alt="RGUKT Logo" width="80" style="width: 80px; max-width: 100%; height: auto; margin-bottom: 16px; display: inline-block;" />
+      <h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">Application Rejected</h2>
+              </div>
+              <div style="padding: 30px;">
+                <p style="color: #334155; font-size: 16px; line-height: 1.6; margin-top: 0; margin-bottom: 24px;">
+                  Hello <strong>${selectedClearance.student.name}</strong>,<br><br>
+                  Your clearance application has been <strong>rejected</strong> by the <strong>${departmentName}</strong> department.
+                </p>
+                <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                  <h3 style="margin: 0 0 16px 0; color: #991b1b; font-size: 16px; border-bottom: 1px solid #fca5a5; padding-bottom: 10px;">Rejection Details</h3>
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size: 14px; text-align: left;">
+                    <tr>
+                      <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600; width: 120px;">Student Name:</td>
+                      <td style="padding: 8px 0; color: #991b1b;">${selectedClearance.student?.name || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600;">Student ID:</td>
+                      <td style="padding: 8px 0; color: #991b1b;">${selectedClearance.student?.studentId || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600;">Program:</td>
+                      <td style="padding: 8px 0; color: #991b1b;">${selectedClearance.student?.program || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600;">Department:</td>
+                      <td style="padding: 8px 0; color: #991b1b;">${departmentName}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600;">Date:</td>
+                      <td style="padding: 8px 0; color: #991b1b;">${new Date().toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600; vertical-align: top;">Reason:</td>
+                      <td style="padding: 8px 0; color: #991b1b;">${remarks || 'No specific reason provided. Please contact the department.'}</td>
+                    </tr>
+                  </table>
+                </div>
+                <div style="text-align: center;">
+                  <a href="https://rguktclearance.vercel.app/student/dashboard" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">View Details</a>
+                </div>
+              </div>
+              <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+                <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                  RGUKT Clearance Hub &copy; ${new Date().getFullYear()}<br>
+                  This is an automated message, please do not reply.
+                </p>
+              </div>
+            </div>
+          `;
+          
+          try {
+            await emailjs.send(
+              EMAILJS_SERVICE_ID,
+              EMAILJS_TEMPLATE_ID,
+              {
+                to_name: selectedClearance.student.name,
+                to_email: selectedClearance.student.email,
+                subject: "Clearance Application Rejected - RGUKT Clearance",
+                html_message: rejectHtmlMessage
+              },
+              EMAILJS_PUBLIC_KEY
+            );
+            console.log('Rejection email sent to student!');
+          } catch (emailErr) {
+            console.error('Failed to send rejection email:', emailErr);
+          }
+        }
       } else if (newStatus === 'APPROVED' && isLast) {
         crUpdateData.status = 'APPROVED';
       }
@@ -831,6 +975,15 @@ export default function DepartmentDashboard() {
             await updateDoc(doc(db, 'itInfraPenalties', itDoc.id), { status: 'PAID', updatedAt: new Date().toISOString() });
           }
         }
+
+        // Update labPenalties
+        if (selectedClearance.student?.studentId) {
+          const labQuery = query(collection(db, 'labPenalties'), where('studentId', '==', selectedClearance.student.studentId), where('status', '==', 'PENDING'));
+          const labSnap = await getDocs(labQuery);
+          for (const labDoc of labSnap.docs) {
+            await updateDoc(doc(db, 'labPenalties', labDoc.id), { status: 'PAID', updatedAt: new Date().toISOString() });
+          }
+        }
       }
       
       await updateDoc(crRef, crUpdateData);
@@ -853,8 +1006,8 @@ export default function DepartmentDashboard() {
               {
                 name: studentName,
                 studentId: studentId,
-                program: selectedClearance.student?.program || 'B.Tech',
-                department: selectedClearance.department || selectedClearance.student?.department,
+                program: selectedClearance.programType || selectedClearance.student?.program || 'B.Tech',
+                department: selectedClearance.courseType || selectedClearance.department || selectedClearance.student?.department,
                 hostel: selectedClearance.presentHostel || selectedClearance.student?.hostel
               },
               selectedClearance
@@ -886,7 +1039,8 @@ export default function DepartmentDashboard() {
           const htmlMessage = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f9fafb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
               <div style="background: linear-gradient(135deg, #16a34a, #15803d); padding: 30px 20px; text-align: center;">
-                <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Clearance Application Completed!</h1>
+                <img src="https://rguktclearance.vercel.app/logo.png" alt="RGUKT Logo" width="80" style="width: 80px; max-width: 100%; height: auto; margin-bottom: 16px; display: inline-block;" />
+      <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Clearance Application Completed!</h1>
               </div>
               <div style="padding: 30px; background-color: white;">
                 <p style="color: #334155; font-size: 16px; margin-bottom: 20px;">Dear <strong>${studentName}</strong>,</p>
@@ -934,6 +1088,7 @@ export default function DepartmentDashboard() {
             {
               to_name: studentName,
               to_email: selectedClearance.student?.email,
+              subject: "Clearance Application Completed! - RGUKT Clearance",
               html_message: htmlMessage
             },
             EMAILJS_PUBLIC_KEY
@@ -1264,29 +1419,23 @@ export default function DepartmentDashboard() {
 
           const htmlMessage = `
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
-              <div style="background: linear-gradient(135deg, #ef4444, #dc2626); padding: 24px 20px; text-align: center; color: white;">
-                <table width="72" height="72" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 20px auto; background-color: white; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-                  <tr>
-                    <td align="center" valign="middle" style="height: 72px;">
-                      <img src="https://img.icons8.com/ios-filled/50/dc2626/bill.png" width="36" height="36" style="display: block; border: 0;" alt="Invoice" />
-                    </td>
-                  </tr>
-                </table>
-                <h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">Pending Dues Alert</h2>
+              <div style="background: linear-gradient(135deg, #f97316, #ea580c); padding: 24px 20px; text-align: center; color: white;">
+                <img src="https://rguktclearance.vercel.app/logo.png" alt="RGUKT Logo" width="80" style="width: 80px; max-width: 100%; height: auto; margin-bottom: 16px; display: inline-block;" />
+      <h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">Pending Dues Alert</h2>
               </div>
               <div style="padding: 30px;">
                 <p style="color: #334155; font-size: 16px; line-height: 1.6; margin-top: 0; margin-bottom: 24px;">
                   Hello <strong>${selectedClearance.student.name}</strong>,<br><br>
                   Your clearance application has reached the <strong>FO (Accounts) Office</strong>. However, you have pending dues that must be cleared before final approval.
                 </p>
-                <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
-                  <h3 style="margin: 0 0 16px 0; color: #991b1b; font-size: 16px;">Dues Breakdown</h3>
+                <div style="background-color: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                  <h3 style="margin: 0 0 16px 0; color: #9a3412; font-size: 16px;">Dues Breakdown</h3>
                   <table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size: 14px; border-collapse: collapse;">
                     <thead>
                       <tr>
-                        <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fca5a5; color: #7f1d1d; text-align: left;">Department</th>
-                        <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fca5a5; color: #7f1d1d; text-align: left;">Reason</th>
-                        <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fca5a5; color: #7f1d1d; text-align: right;">Amount</th>
+                        <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fdba74; color: #7c2d12; text-align: left;">Department</th>
+                        <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fdba74; color: #7c2d12; text-align: left;">Reason</th>
+                        <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fdba74; color: #7c2d12; text-align: right;">Amount</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1295,7 +1444,7 @@ export default function DepartmentDashboard() {
                     <tfoot>
                       <tr>
                         <td colspan="2" style="padding: 16px 12px 0 12px; color: #334155; font-weight: bold; text-align: right; font-size: 16px;">Grand Total:</td>
-                        <td style="padding: 16px 12px 0 12px; color: #ef4444; font-weight: bold; text-align: right; font-size: 18px;">₹${latestTotalFeeDue}</td>
+                        <td style="padding: 16px 12px 0 12px; color: #ea580c; font-weight: bold; text-align: right; font-size: 18px;">₹${latestTotalFeeDue}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -1306,7 +1455,7 @@ export default function DepartmentDashboard() {
                   </p>
                 </div>
                 <div style="text-align: center;">
-                  <a href="https://rguktclearance.vercel.app/student/dashboard" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">Upload Receipt</a>
+                  <a href="https://rguktclearance.vercel.app/student/dashboard" style="display: inline-block; background-color: #f97316; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(249, 115, 22, 0.2);">Upload Receipt</a>
                 </div>
                 ${pdfLinkHtml}
               </div>
@@ -1325,6 +1474,7 @@ export default function DepartmentDashboard() {
             {
               to_name: selectedClearance.student.name,
               to_email: selectedClearance.student.email,
+              subject: "Pending Dues Alert - RGUKT Clearance",
               html_message: htmlMessage
             },
             EMAILJS_PUBLIC_KEY
@@ -1486,19 +1636,23 @@ export default function DepartmentDashboard() {
             </button>
           )}
 
-          {isHostelWarden && (
-            <button 
-              onClick={() => setCurrentTab('profile')}
-              className={`w-full flex items-center gap-3 px-4 py-3 font-label-md transition-all duration-300 rounded-lg ${currentTab === 'profile' ? 'text-surface-container-lowest border-l-2 border-secondary-container bg-surface-variant/10 rounded-l-none rounded-r-lg' : 'text-on-primary-container/70 hover:bg-surface-variant/20 hover:text-surface-container-lowest'}`}
-            >
-              <Settings className="w-5 h-5" />
-              Warden Profile
-            </button>
-          )}
+          <button 
+            onClick={() => setCurrentTab('profile')}
+            className={`w-full flex items-center gap-3 px-4 py-3 font-label-md transition-all duration-300 rounded-lg ${currentTab === 'profile' ? 'text-surface-container-lowest border-l-2 border-secondary-container bg-surface-variant/10 rounded-l-none rounded-r-lg' : 'text-on-primary-container/70 hover:bg-surface-variant/20 hover:text-surface-container-lowest'}`}
+          >
+            <UserCog className="w-5 h-5" />
+            Department Profile
+          </button>
 
-          <button className="w-full flex items-center gap-3 px-4 py-3 text-on-primary-container/70 font-label-md hover:bg-surface-variant/20 hover:text-surface-container-lowest transition-all duration-300 rounded-lg">
+          <button 
+            onClick={() => {
+              setCurrentTab('students');
+              setSelectedHostelView(null);
+            }}
+            className={`w-full flex items-center gap-3 px-4 py-3 font-label-md transition-all duration-300 rounded-lg ${currentTab === 'students' ? 'text-surface-container-lowest border-l-2 border-secondary-container bg-surface-variant/10 rounded-l-none rounded-r-lg' : 'text-on-primary-container/70 hover:bg-surface-variant/20 hover:text-surface-container-lowest'}`}
+          >
             <Users className="w-5 h-5" />
-            Students
+            <span>Students</span>
           </button>
           <button className="w-full flex items-center gap-3 px-4 py-3 text-on-primary-container/70 font-label-md hover:bg-surface-variant/20 hover:text-surface-container-lowest transition-all duration-300 rounded-lg">
             <FileText className="w-5 h-5" />
@@ -1523,7 +1677,21 @@ export default function DepartmentDashboard() {
           <div className="flex-1 max-w-md">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-outline w-5 h-5" />
-              <input className="w-full pl-10 pr-4 py-2 bg-surface-container-lowest border border-outline-variant/50 rounded-lg text-sm focus:outline-none focus:border-secondary-container focus:ring-1 focus:ring-secondary-container transition-colors" placeholder="Search student IDs, names..." type="text" />
+              <input 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-8 py-2 bg-surface-container-lowest border border-outline-variant/50 rounded-lg text-sm focus:outline-none focus:border-secondary-container focus:ring-1 focus:ring-secondary-container transition-colors" 
+                placeholder="Search student IDs, names, programs..." 
+                type="text" 
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-outline hover:text-primary font-bold px-1"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -1581,48 +1749,525 @@ export default function DepartmentDashboard() {
 
         {/* Page Content */}
         <main className="flex-1 p-8 max-w-[1440px] mx-auto w-full outline-none" tabIndex={-1}>
-          {currentTab === 'profile' ? (
-            <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-surface-variant p-8 max-w-2xl animate-in fade-in zoom-in duration-300">
-              <h2 className="font-headline-lg text-2xl font-bold text-primary mb-2">Warden Profile</h2>
-              <p className="font-body-md text-on-surface-variant mb-8">Update your display name to appear on student approvals.</p>
-              
-              <div className="space-y-4">
+          {currentTab === 'students' ? (
+            <div className="space-y-6 animate-in fade-in duration-300">
+              {/* Header & Stats */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-surface-variant pb-5">
                 <div>
-                  <label className="block text-sm font-semibold text-on-surface-variant mb-2">Warden Display Name</label>
-                  <input 
-                    type="text" 
-                    value={wardenName}
-                    onChange={(e) => setWardenName(e.target.value)}
-                    placeholder="e.g. John Doe - BH1"
-                    className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-xl focus:border-secondary focus:ring-1 focus:ring-secondary outline-none transition-all"
-                  />
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-bold uppercase tracking-wider">
+                      {departmentName}
+                    </span>
+                  </div>
+                  <h2 className="font-headline-lg text-2xl sm:text-3xl font-bold text-primary">Students Directory</h2>
+                  <p className="font-body-md text-on-surface-variant text-sm mt-1">
+                    Review and search all students approved or rejected by your department.
+                  </p>
                 </div>
-                <button 
-                  disabled={isSavingProfile}
-                  onClick={async () => {
+              </div>
+
+              {/* Stat Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-surface-container-lowest p-5 rounded-2xl border border-surface-variant shadow-xs flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-xl border border-blue-100">
+                    <Users className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-outline uppercase tracking-wider block">Total Processed</span>
+                    <span className="text-2xl font-extrabold text-primary">
+                      {clearances.filter(c => c.status === 'APPROVED' || c.status === 'REJECTED').length}
+                    </span>
+                  </div>
+                </div>
+
+                <div 
+                  onClick={() => setStudentsSubTab('approved')}
+                  className={`p-5 rounded-2xl border shadow-xs flex items-center gap-4 cursor-pointer transition-all ${
+                    studentsSubTab === 'approved' 
+                      ? 'bg-emerald-50/80 border-emerald-300 ring-2 ring-emerald-500/20' 
+                      : 'bg-surface-container-lowest border-surface-variant hover:border-emerald-200'
+                  }`}
+                >
+                  <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xl border border-emerald-200">
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider block">Approved Clearances</span>
+                    <span className="text-2xl font-extrabold text-emerald-900">
+                      {clearances.filter(c => c.status === 'APPROVED').length}
+                    </span>
+                  </div>
+                </div>
+
+                <div 
+                  onClick={() => setStudentsSubTab('rejected')}
+                  className={`p-5 rounded-2xl border shadow-xs flex items-center gap-4 cursor-pointer transition-all ${
+                    studentsSubTab === 'rejected' 
+                      ? 'bg-red-50/80 border-red-300 ring-2 ring-red-500/20' 
+                      : 'bg-surface-container-lowest border-surface-variant hover:border-red-200'
+                  }`}
+                >
+                  <div className="w-12 h-12 rounded-xl bg-red-100 text-red-700 flex items-center justify-center font-bold text-xl border border-red-200">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-red-800 uppercase tracking-wider block">Rejected Clearances</span>
+                    <span className="text-2xl font-extrabold text-red-900">
+                      {clearances.filter(c => c.status === 'REJECTED').length}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sub-Tabs Selector, Hostel Filter & Search Bar */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-surface-container-lowest p-4 rounded-2xl border border-surface-variant shadow-xs">
+                {/* 2 Section Tabs: Approved & Rejected */}
+                <div className="flex flex-wrap items-center gap-2 p-1 bg-surface-variant/30 rounded-xl border border-surface-variant/40">
+                  <button
+                    onClick={() => setStudentsSubTab('approved')}
+                    className={`px-5 py-2 rounded-lg font-bold text-xs transition-all flex items-center gap-2 cursor-pointer ${
+                      studentsSubTab === 'approved'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-on-surface-variant hover:text-primary'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Approved Students</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      studentsSubTab === 'approved' ? 'bg-emerald-700 text-white' : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {clearances.filter(c => c.status === 'APPROVED').length}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setStudentsSubTab('rejected')}
+                    className={`px-5 py-2 rounded-lg font-bold text-xs transition-all flex items-center gap-2 cursor-pointer ${
+                      studentsSubTab === 'rejected'
+                        ? 'bg-red-600 text-white shadow-xs'
+                        : 'text-on-surface-variant hover:text-primary'
+                    }`}
+                  >
+                    <AlertCircle className="w-4 h-4" />
+                    <span>Rejected Students</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      studentsSubTab === 'rejected' ? 'bg-red-700 text-white' : 'bg-red-100 text-red-800'
+                    }`}>
+                      {clearances.filter(c => c.status === 'REJECTED').length}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Filter Controls */}
+                <div className="flex items-center gap-3">
+                  {isHostelWarden && (
+                    <select
+                      value={studentsHostelFilter}
+                      onChange={(e) => setStudentsHostelFilter(e.target.value)}
+                      className="px-3 py-2 bg-surface border border-outline-variant/60 rounded-xl text-xs font-semibold text-primary focus:outline-none focus:border-blue-600"
+                    >
+                      <option value="ALL">All Hostels</option>
+                      {(departmentName === 'Boys Hostel' ? BOYS_HOSTELS : departmentName === 'Girls Hostel' ? GIRLS_HOSTELS : ALL_HOSTELS).map(h => (
+                        <option key={h} value={h}>{h}</option>
+                      ))}
+                    </select>
+                  )}
+
+                  {/* Local Search input */}
+                  <div className="relative flex-1 sm:w-64">
+                    <Search className="w-4 h-4 text-outline absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder={`Search ${studentsSubTab} students...`}
+                      className="w-full pl-9 pr-7 py-2 bg-surface border border-outline-variant/60 rounded-xl text-xs font-medium focus:border-blue-600 outline-none transition-all"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-outline hover:text-primary font-bold"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Students Table */}
+              <div className="bg-surface-container-lowest rounded-2xl shadow-[0_4px_20px_-2px_rgba(10,25,47,0.05)] border border-surface-variant overflow-hidden">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-surface-container/50 border-b border-surface-variant">
+                    <tr>
+                      <th className="px-6 py-4 font-headline-sm font-semibold text-on-surface-variant">Student ID</th>
+                      <th className="px-6 py-4 font-headline-sm font-semibold text-on-surface-variant">Name</th>
+                      <th className="px-6 py-4 font-headline-sm font-semibold text-on-surface-variant">Program & Branch</th>
+                      {isHostelWarden && (
+                        <th className="px-6 py-4 font-headline-sm font-semibold text-on-surface-variant">Hostel</th>
+                      )}
+                      <th className="px-6 py-4 font-headline-sm font-semibold text-on-surface-variant">
+                        {studentsSubTab === 'approved' ? 'Approval / Remarks' : 'Rejection Reason'}
+                      </th>
+                      <th className="px-6 py-4 font-headline-sm font-semibold text-on-surface-variant">Status</th>
+                      <th className="px-6 py-4 font-headline-sm font-semibold text-on-surface-variant text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-surface-variant">
+                    {(() => {
+                      const targetStatus = studentsSubTab === 'approved' ? 'APPROVED' : 'REJECTED';
+                      let list = clearances.filter(c => c.status === targetStatus);
+                      
+                      if (isHostelWarden && studentsHostelFilter !== 'ALL') {
+                        const normalize = (n: string) => (n || '').replace(/\s+/g, '').toLowerCase();
+                        list = list.filter(c => normalize(c.presentHostel) === normalize(studentsHostelFilter));
+                      }
+
+                      const q = searchQuery.toLowerCase().trim();
+                      const filtered = list.filter(c => {
+                        if (!q) return true;
+                        return (
+                          c.student?.studentId?.toLowerCase().includes(q) ||
+                          c.student?.name?.toLowerCase().includes(q) ||
+                          c.programType?.toLowerCase().includes(q) ||
+                          c.courseType?.toLowerCase().includes(q) ||
+                          c.presentHostel?.toLowerCase().includes(q) ||
+                          c.remarks?.toLowerCase().includes(q)
+                        );
+                      });
+
+                      if (filtered.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={isHostelWarden ? 7 : 6} className="px-6 py-14 text-center text-on-surface-variant">
+                              <div className="flex flex-col items-center justify-center space-y-2">
+                                {studentsSubTab === 'approved' ? (
+                                  <CheckCircle2 className="w-12 h-12 text-emerald-400 mb-1 opacity-70" />
+                                ) : (
+                                  <AlertCircle className="w-12 h-12 text-red-400 mb-1 opacity-70" />
+                                )}
+                                <p className="font-bold text-slate-800 text-base">
+                                  No {studentsSubTab === 'approved' ? 'approved' : 'rejected'} students found
+                                </p>
+                                <p className="text-xs text-slate-500 max-w-sm">
+                                  {searchQuery 
+                                    ? `No student matching "${searchQuery}" in ${studentsSubTab} records.`
+                                    : `When your department ${studentsSubTab === 'approved' ? 'approves' : 'rejects'} a clearance application, it will be moved here.`}
+                                </p>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      return filtered.map(c => (
+                        <tr key={c.id} className="hover:bg-surface-variant/20 transition-colors">
+                          <td className="px-6 py-4 font-semibold text-primary font-mono select-all">
+                            {c.student?.studentId || 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 font-medium text-slate-900">
+                            {formatName(c.student?.name, c.student?.studentId)}
+                          </td>
+                          <td className="px-6 py-4 text-on-surface-variant">
+                            <span className="font-semibold text-slate-800">{c.programType || c.student?.program}</span>
+                            {c.courseType ? ` (${c.courseType})` : ''}
+                            {c.programType === 'B.Tech' && c.pucCourseType ? ` - ${c.pucCourseType}` : ''}
+                          </td>
+                          {isHostelWarden && (
+                            <td className="px-6 py-4">
+                              <span className="inline-block bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded text-xs border border-blue-200">
+                                {c.presentHostel || 'N/A'}
+                              </span>
+                            </td>
+                          )}
+                          <td className="px-6 py-4 max-w-xs">
+                            <div className="text-xs leading-relaxed truncate" title={c.remarks}>
+                              {c.remarks ? (
+                                <span className={studentsSubTab === 'rejected' ? 'text-red-700 font-medium' : 'text-slate-700'}>
+                                  {c.remarks}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 italic">No notes recorded</span>
+                              )}
+                            </div>
+                            {c.updatedAt && (
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                {new Date(c.updatedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            {c.status === 'APPROVED' ? (
+                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 font-label-sm text-xs font-semibold">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Approved
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-error-container text-on-error-container font-label-sm text-xs font-semibold">
+                                <AlertCircle className="w-3.5 h-3.5" /> Rejected
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => handleSelectClearance(c)}
+                                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 border border-outline text-primary rounded-lg font-label-sm text-xs font-semibold hover:bg-surface-variant/50 transition-colors cursor-pointer"
+                              >
+                                <ShieldCheck className="w-4 h-4" />
+                                Review
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ));
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : currentTab === 'profile' ? (
+            <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in zoom-in-95 duration-300">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-surface-variant pb-5">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-bold uppercase tracking-wider">
+                      {departmentName}
+                    </span>
+                  </div>
+                  <h2 className="font-headline-lg text-2xl sm:text-3xl font-bold text-primary">Department Profile & Contact Details</h2>
+                  <p className="font-body-md text-on-surface-variant text-sm mt-1">
+                    Update your official contact details. These will be visible to students on their portal when they view your department.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                {/* Edit Form */}
+                <form 
+                  onSubmit={async (e) => {
+                    e.preventDefault();
                     setIsSavingProfile(true);
+                    setProfileSaveSuccess(false);
                     try {
                       const userStr = localStorage.getItem('user');
-                      if (userStr) {
-                        const user = JSON.parse(userStr);
-                        user.wardenName = wardenName;
-                        localStorage.setItem('user', JSON.stringify(user));
-                        
-                        const userRef = doc(db, 'users', user.uid || user.id);
-                        await updateDoc(userRef, { wardenName });
-                        alert("Profile updated successfully!");
+                      const user = userStr ? JSON.parse(userStr) : {};
+                      
+                      const profilePayload = {
+                        departmentName: departmentName,
+                        officerName: profileOfficerName.trim(),
+                        email: profileEmail.trim(),
+                        phoneNumber: profilePhone.trim(),
+                        designation: profileDesignation.trim(),
+                        officeLocation: profileOfficeLocation.trim(),
+                        updatedAt: new Date().toISOString()
+                      };
+
+                      await setDoc(doc(db, 'departmentProfiles', departmentName), profilePayload, { merge: true });
+
+                      if (user.uid || user.id) {
+                        await updateDoc(doc(db, 'users', user.uid || user.id), {
+                          ...profilePayload,
+                          name: profileOfficerName.trim() || user.name,
+                          wardenName: profileOfficerName.trim()
+                        }).catch(err => console.warn('Could not update user doc:', err));
                       }
-                    } catch(err) {
-                      console.error(err);
-                      alert("Failed to update profile.");
+
+                      const updatedUser = {
+                        ...user,
+                        ...profilePayload,
+                        name: profileOfficerName.trim() || user.name,
+                        wardenName: profileOfficerName.trim()
+                      };
+                      localStorage.setItem('user', JSON.stringify(updatedUser));
+                      setWardenName(profileOfficerName.trim());
+
+                      setProfileSaveSuccess(true);
+                      setTimeout(() => setProfileSaveSuccess(false), 3000);
+                    } catch (err: any) {
+                      console.error('Failed to save profile:', err);
+                      alert('Failed to save department profile: ' + (err.message || err));
                     } finally {
                       setIsSavingProfile(false);
                     }
-                  }}
-                  className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  }} 
+                  className="lg:col-span-7 bg-surface-container-lowest rounded-3xl shadow-sm border border-surface-variant p-6 sm:p-8 space-y-5"
                 >
-                  {isSavingProfile ? 'Saving...' : 'Save Profile'}
-                </button>
+                  <div>
+                    <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">
+                      In-Charge / Officer Name <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-outline">
+                        <UserCog className="w-4 h-4" />
+                      </div>
+                      <input 
+                        type="text" 
+                        required
+                        value={profileOfficerName}
+                        onChange={(e) => setProfileOfficerName(e.target.value)}
+                        placeholder="e.g. Dr. Ramesh Kumar"
+                        className="w-full pl-10 pr-4 py-3 bg-surface border border-outline-variant rounded-xl focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-none transition-all text-sm font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">
+                      Designation / Role Title
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-outline">
+                        <Award className="w-4 h-4" />
+                      </div>
+                      <input 
+                        type="text" 
+                        value={profileDesignation}
+                        onChange={(e) => setProfileDesignation(e.target.value)}
+                        placeholder="e.g. Chief Warden / Head of Department / Lab In-Charge"
+                        className="w-full pl-10 pr-4 py-3 bg-surface border border-outline-variant rounded-xl focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-none transition-all text-sm font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">
+                        Official Email Address <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-outline">
+                          <Mail className="w-4 h-4" />
+                        </div>
+                        <input 
+                          type="email" 
+                          required
+                          value={profileEmail}
+                          onChange={(e) => setProfileEmail(e.target.value)}
+                          placeholder="e.g. warden@rgukt.ac.in"
+                          className="w-full pl-10 pr-4 py-3 bg-surface border border-outline-variant rounded-xl focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-none transition-all text-sm font-medium"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">
+                        Official Phone / Mobile <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-outline">
+                          <Phone className="w-4 h-4" />
+                        </div>
+                        <input 
+                          type="tel" 
+                          required
+                          value={profilePhone}
+                          onChange={(e) => setProfilePhone(e.target.value)}
+                          placeholder="e.g. +91 98765 43210"
+                          className="w-full pl-10 pr-4 py-3 bg-surface border border-outline-variant rounded-xl focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-none transition-all text-sm font-medium"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">
+                      Office Location / Room / Wing
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-outline">
+                        <MapPin className="w-4 h-4" />
+                      </div>
+                      <input 
+                        type="text" 
+                        value={profileOfficeLocation}
+                        onChange={(e) => setProfileOfficeLocation(e.target.value)}
+                        placeholder="e.g. Student Amenities Complex, Ground Floor Room 101"
+                        className="w-full pl-10 pr-4 py-3 bg-surface border border-outline-variant rounded-xl focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-none transition-all text-sm font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-3">
+                    <button 
+                      type="submit"
+                      disabled={isSavingProfile}
+                      className={`w-full py-3.5 rounded-xl font-bold transition-all text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-98 ${
+                        profileSaveSuccess 
+                          ? 'bg-emerald-600 text-white' 
+                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      }`}
+                    >
+                      {profileSaveSuccess ? (
+                        <>
+                          <Check className="w-5 h-5 animate-in zoom-in-50" />
+                          <span>Saved Successfully!</span>
+                        </>
+                      ) : isSavingProfile ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          <span>Saving Profile...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckSquare className="w-5 h-5" />
+                          <span>Save & Update Department Profile</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+
+                {/* Live Student Preview Card */}
+                <div className="lg:col-span-5 bg-gradient-to-br from-slate-50 to-blue-50/40 rounded-3xl border border-blue-100 p-6 space-y-4 shadow-sm">
+                  <div className="flex items-center gap-2 text-xs font-bold text-blue-700 uppercase tracking-wider">
+                    <Sparkles className="w-4 h-4" />
+                    <span>Student View Live Preview</span>
+                  </div>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    This is how your department contact card appears to students inside their portal:
+                  </p>
+
+                  <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3.5">
+                    <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+                      <div className="w-11 h-11 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+                        {(() => {
+                          const IconComp = getDepartmentIcon(departmentName);
+                          return <IconComp className="w-6 h-6" />;
+                        })()}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-slate-900 text-sm truncate">{profileOfficerName || 'Officer Name'}</h4>
+                        <span className="text-[11px] font-semibold text-blue-600 block">{profileDesignation || 'Department In-Charge'}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 text-xs">
+                      <div className="flex items-center gap-2.5 text-slate-700">
+                        <Mail className="w-4 h-4 text-slate-400 shrink-0" />
+                        <span className="truncate font-medium">{profileEmail || 'department@rgukt.ac.in'}</span>
+                      </div>
+                      <div className="flex items-center gap-2.5 text-slate-700">
+                        <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                        <span className="font-medium">{profilePhone || '+91 8588-283600'}</span>
+                      </div>
+                      {profileOfficeLocation && (
+                        <div className="flex items-start gap-2.5 text-slate-700">
+                          <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                          <span className="font-medium text-[11.5px] leading-tight">{profileOfficeLocation}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 flex gap-2">
+                      <span className="flex-1 py-1.5 bg-blue-50 text-blue-700 text-center rounded-lg text-[11px] font-bold">
+                        Email Authority
+                      </span>
+                      <span className="flex-1 py-1.5 bg-emerald-50 text-emerald-700 text-center rounded-lg text-[11px] font-bold">
+                        Call Office
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           ) : currentTab === 'labPenalty' ? (
@@ -1684,7 +2329,7 @@ export default function DepartmentDashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10 pb-4 border-none ring-0 focus:outline-none outline-none">
                   {(departmentName === 'Boys Hostel' ? BOYS_HOSTELS : departmentName === 'Girls Hostel' ? GIRLS_HOSTELS : ALL_HOSTELS).map(hostel => {
                     const normalizeHostelName = (name: string) => name?.replace(/\s+/g, '').toLowerCase();
-                    const reqCount = clearances.filter(c => normalizeHostelName(c.presentHostel) === normalizeHostelName(hostel)).length;
+                    const reqCount = clearances.filter(c => normalizeHostelName(c.presentHostel) === normalizeHostelName(hostel) && c.status === 'PENDING').length;
                     
                     return (
                       <div 
@@ -1697,7 +2342,7 @@ export default function DepartmentDashboard() {
                         </div>
                         <h3 className="font-headline-sm text-lg font-bold text-primary mb-2">{hostel}</h3>
                         <p className="text-on-surface-variant text-sm font-medium">
-                          {reqCount} active request{reqCount !== 1 ? 's' : ''}
+                          {reqCount} active pending request{reqCount !== 1 ? 's' : ''}
                         </p>
                       </div>
                     );
@@ -1747,19 +2392,51 @@ export default function DepartmentDashboard() {
                   </tr>
                 ) : (() => {
                   const normalizeHostelName = (name: string) => name?.replace(/\s+/g, '').toLowerCase();
-                  const filteredClearances = selectedHostelView ? clearances.filter(c => normalizeHostelName(c.presentHostel) === normalizeHostelName(selectedHostelView)) : clearances;
+                  const hostelClearances = selectedHostelView 
+                    ? clearances.filter(c => normalizeHostelName(c.presentHostel) === normalizeHostelName(selectedHostelView)) 
+                    : clearances;
+                  const pendingClearances = hostelClearances.filter(c => c.status === 'PENDING');
+                  const q = searchQuery.toLowerCase().trim();
+                  const filteredClearances = pendingClearances.filter(c => {
+                    if (!q) return true;
+                    return (
+                      c.student?.studentId?.toLowerCase().includes(q) ||
+                      c.student?.name?.toLowerCase().includes(q) ||
+                      c.programType?.toLowerCase().includes(q) ||
+                      c.courseType?.toLowerCase().includes(q) ||
+                      c.presentHostel?.toLowerCase().includes(q)
+                    );
+                  });
+
                   if (filteredClearances.length === 0) {
                     return (
                       <tr>
-                        <td colSpan={5} className="px-6 py-12 text-center text-on-surface-variant">
-                          No clearance requests found for your department.
+                        <td colSpan={5} className="px-6 py-14 text-center text-on-surface-variant">
+                          <div className="flex flex-col items-center justify-center space-y-2.5">
+                            <CheckCircle2 className="w-10 h-10 text-emerald-500/80 mb-1" />
+                            <p className="font-bold text-slate-800 text-base">No pending requests</p>
+                            <p className="text-xs text-slate-500 max-w-sm">
+                              {searchQuery 
+                                ? `No pending requests matching "${searchQuery}".` 
+                                : 'All submitted clearance applications have been processed. Approved and rejected students are moved to the Students page.'}
+                            </p>
+                            <button
+                              onClick={() => {
+                                setCurrentTab('students');
+                                setSelectedHostelView(null);
+                              }}
+                              className="mt-2 px-4 py-2 bg-blue-50 text-blue-700 font-bold rounded-lg text-xs hover:bg-blue-100 transition-colors inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                            >
+                              <Users className="w-4 h-4" /> View Students Directory
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
                   }
                   return filteredClearances.map(c => (
                     <tr key={c.id} className="hover:bg-surface-variant/20 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-primary">{c.student?.studentId || 'N/A'}</td>
+                    <td className="px-6 py-4 font-semibold text-primary font-mono select-all">{c.student?.studentId || 'N/A'}</td>
                     <td className="px-6 py-4 font-medium">{formatName(c.student?.name, c.student?.studentId)}</td>
                     <td className="px-6 py-4 text-on-surface-variant">
                       {c.programType || c.student?.program} {c.courseType ? `(${c.courseType})` : ''}{c.programType === 'B.Tech' && c.pucCourseType ? ` - ${c.pucCourseType}` : ''}
@@ -1784,7 +2461,7 @@ export default function DepartmentDashboard() {
                     <td className="px-6 py-4 text-right">
                       <button 
                         onClick={() => handleSelectClearance(c)}
-                        className="inline-flex items-center gap-2 px-4 py-2 border border-outline text-primary rounded-lg font-label-sm text-xs font-semibold hover:bg-surface-variant/50 transition-colors"
+                        className="inline-flex items-center gap-2 px-4 py-2 border border-outline text-primary rounded-lg font-label-sm text-xs font-semibold hover:bg-surface-variant/50 transition-colors cursor-pointer"
                       >
                         <ShieldCheck className="w-4 h-4" /> Review
                       </button>
@@ -1957,12 +2634,12 @@ export default function DepartmentDashboard() {
                               ))}
 
                               {/* Grand Total Bar & Actions - Compact Single Line */}
-                              <div className={`flex items-center justify-between gap-3 px-3.5 py-2 border mt-2 rounded-xl shadow-xs transition-colors ${isDuesAdded ? 'border-green-300 bg-green-100/60' : 'border-error-container bg-error-container/40'}`}>
+                              <div className="flex items-center justify-between gap-3 px-3.5 py-2 border mt-2 rounded-xl shadow-xs border-error-container bg-error-container/40">
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <span className={`font-bold text-xs sm:text-sm whitespace-nowrap ${isDuesAdded ? 'text-green-900' : 'text-on-error-container'}`}>
+                                  <span className="font-bold text-xs sm:text-sm whitespace-nowrap text-on-error-container">
                                     Total Dues:
                                   </span>
-                                  <span className={`font-extrabold text-sm sm:text-base whitespace-nowrap transition-colors ${isDuesAdded ? 'text-green-700' : 'text-error'}`}>
+                                  <span className="font-extrabold text-sm sm:text-base whitespace-nowrap text-error">
                                     ₹{fetchedFee.toLocaleString('en-IN')}
                                   </span>
                                   <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-white/70 border border-slate-200 text-slate-600 whitespace-nowrap hidden sm:inline">
@@ -1979,42 +2656,6 @@ export default function DepartmentDashboard() {
                                   >
                                     <FileText className="w-3.5 h-3.5 text-red-600 shrink-0" />
                                     <span className="whitespace-nowrap">Statement PDF</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={isDuesAdded || isAddingDues}
-                                    onClick={() => {
-                                      setIsAddingDues(true);
-                                      setTimeout(() => {
-                                        setIsAddingDues(false);
-                                        setIsDuesAdded(true);
-                                        setShowToast(true);
-                                        setFeeAmount(fetchedFee.toString());
-                                        setActionType('APPROVE');
-                                        setTimeout(() => setShowToast(false), 3000);
-                                      }, 800);
-                                    }}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                                      isDuesAdded 
-                                        ? 'bg-green-600 text-white shadow-green-600/20' 
-                                        : isAddingDues 
-                                        ? 'bg-error/70 text-on-error cursor-wait' 
-                                        : 'bg-error hover:bg-red-700 text-on-error'
-                                    }`}
-                                  >
-                                    {isDuesAdded ? (
-                                      <>
-                                        <CheckCircle2 className="w-3.5 h-3.5 animate-in zoom-in shrink-0" />
-                                        <span>Added</span>
-                                      </>
-                                    ) : isAddingDues ? (
-                                      <>
-                                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0"></div>
-                                        <span>Adding...</span>
-                                      </>
-                                    ) : (
-                                      <span>Add Total</span>
-                                    )}
                                   </button>
                                 </div>
                               </div>
@@ -2447,34 +3088,51 @@ export default function DepartmentDashboard() {
                 )}
 
                 <div className="space-y-4">
+                  {/* Uploaded Receipt Viewer (Visible ONLY for FO login) */}
+                  {departmentName === 'FO' && selectedClearance.feeReceiptUrl && (
+                    <div className="bg-emerald-50/80 p-4 rounded-xl border border-emerald-200 shadow-sm flex flex-col sm:flex-row gap-4 sm:items-center justify-between animate-in fade-in">
+                      <div>
+                        <h5 className="font-bold text-emerald-800 mb-1 flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4" /> Student Uploaded Fee Receipt
+                        </h5>
+                        <p className="text-xs text-emerald-700">A payment receipt has been uploaded by the student.</p>
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => setShowUploadedReceiptModal(true)}
+                        className="shrink-0 flex items-center justify-center gap-2 bg-emerald-600 text-white hover:bg-emerald-700 px-4 py-2.5 rounded-xl font-bold text-sm transition-colors shadow-sm cursor-pointer"
+                      >
+                        <FileText className="w-4 h-4" /> View Receipt
+                      </button>
+                    </div>
+                  )}
+
                   {/* Payment Reference ID for FO if student has dues */}
-                  {departmentName === 'FO' && (isDuesAdded || Number(feeAmount) > 0 || Number(selectedClearance.totalFeeDue) > 0 || Boolean(selectedClearance.feeReceiptUrl)) && (
+                  {departmentName === 'FO' && (((fetchedFee !== null ? Number(fetchedFee) : 0) > 0) || Number(selectedClearance.totalFeeDue) > 0 || Boolean(selectedClearance.feeReceiptUrl)) && (
                     <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 shadow-sm">
                       <h5 className="font-bold text-amber-800 mb-1">
-                        Total Student Dues: ₹{(isDuesAdded && Number(feeAmount) > 0 ? Number(feeAmount) : (Number(selectedClearance.totalFeeDue) || 0)).toLocaleString('en-IN')}
+                        Total Student Dues: ₹{((fetchedFee !== null && Number(fetchedFee) > 0) ? Number(fetchedFee) : (Number(selectedClearance.totalFeeDue) || 0)).toLocaleString('en-IN')}
                       </h5>
-                      <p className="text-xs text-amber-700 mb-3">The student must pay this accumulated amount before clearance is granted.</p>
-                      {selectedClearance.feeReceiptUrl && (
-                        <div className="mb-4">
-                          <a 
-                            href={selectedClearance.feeReceiptUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 hover:bg-blue-200 px-4 py-2 rounded-lg font-bold text-sm transition-colors border border-blue-300"
-                          >
-                            <FileText className="w-4 h-4" /> View Uploaded Receipt
-                          </a>
+                      <p className="text-xs text-amber-700 mb-4">The student must pay this accumulated amount before clearance is granted.</p>
+
+                      <label className="flex items-center gap-2 mb-3 cursor-pointer">
+                        <input type="checkbox" className="w-4 h-4 text-amber-600 rounded" checked={isFoDuePaid} onChange={(e) => setIsFoDuePaid(e.target.checked)} />
+                        <span className="font-bold text-sm text-amber-900">Mark Dues as Paid</span>
+                      </label>
+
+                      {isFoDuePaid && (
+                        <div className="animate-in fade-in slide-in-from-top-2">
+                          <label className="block font-label-md text-amber-900 mb-2 font-bold text-sm">Payment Reference ID <span className="text-red-500">*</span></label>
+                          <input 
+                            type="text" 
+                            required
+                            value={referenceId}
+                            onChange={e => setReferenceId(e.target.value)}
+                            placeholder="e.g. TXN-123456789"
+                            className="w-full border border-amber-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none bg-white font-mono"
+                          />
                         </div>
                       )}
-                      <label className="block font-label-md text-amber-900 mb-2 font-bold text-sm">Payment Reference ID <span className="text-red-500">*</span></label>
-                      <input 
-                        type="text" 
-                        required
-                        value={referenceId}
-                        onChange={e => setReferenceId(e.target.value)}
-                        placeholder="e.g. TXN-123456789"
-                        className="w-full border border-amber-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none bg-white font-mono"
-                      />
                     </div>
                   )}
 
@@ -2516,7 +3174,7 @@ export default function DepartmentDashboard() {
                       isConfirming || 
                       isConfirmed || 
                       (departmentName === 'COE' && coeAcademicCheck?.hasRemedial) ||
-                      (departmentName === 'FO' && (((isDuesAdded && Number(feeAmount) > 0) || Number(selectedClearance.totalFeeDue) > 0)) && !referenceId.trim())
+                      (departmentName === 'FO' && (((fetchedFee !== null ? Number(fetchedFee) : 0) > 0 || Number(selectedClearance.totalFeeDue) > 0)) && (!isFoDuePaid || !referenceId.trim()))
                     }
                     onClick={() => {
                       if (departmentName === 'COE') {
@@ -2530,15 +3188,18 @@ export default function DepartmentDashboard() {
                           return;
                         }
                       }
-                      const displayDueAmount = (isDuesAdded ? Number(feeAmount) : 0) || Number(selectedClearance.totalFeeDue) || 0;
-                      if (departmentName === 'FO' && displayDueAmount > 0 && !referenceId.trim()) {
-                        alert("Please enter the Payment Reference ID to approve this request.");
+                      const displayDueAmount = departmentName === 'FO'
+                        ? ((fetchedFee !== null ? Number(fetchedFee) : 0) || Number(selectedClearance.totalFeeDue) || 0)
+                        : ((isDuesAdded ? Number(feeAmount) : 0) || Number(selectedClearance.totalFeeDue) || 0);
+
+                      if (departmentName === 'FO' && displayDueAmount > 0 && (!isFoDuePaid || !referenceId.trim())) {
+                        alert("Please mark dues as paid and enter the Payment Reference ID to approve this request.");
                         return;
                       }
                       setShowConfirmPopup(true);
                     }} 
                     className={`flex-1 text-white py-3.5 rounded-xl font-label-md font-semibold transition-all duration-300 flex items-center justify-center gap-2 shadow-sm ${
-                      (departmentName === 'COE' && coeAcademicCheck?.hasRemedial) || (departmentName === 'FO' && (((isDuesAdded && Number(feeAmount) > 0) || Number(selectedClearance.totalFeeDue) > 0)) && !referenceId.trim())
+                      (departmentName === 'COE' && coeAcademicCheck?.hasRemedial) || (departmentName === 'FO' && (((fetchedFee !== null ? Number(fetchedFee) : 0) > 0 || Number(selectedClearance.totalFeeDue) > 0)) && (!isFoDuePaid || !referenceId.trim()))
                         ? 'bg-gray-400 cursor-not-allowed opacity-60'
                         : isConfirmed && actionType === 'APPROVE' ? 'bg-green-500' : 'bg-green-600 hover:bg-green-700'
                     } disabled:opacity-80`}
@@ -2841,6 +3502,50 @@ export default function DepartmentDashboard() {
         </div>
       )}
 
+      {/* Uploaded Receipt Preview Modal for FO */}
+      {showUploadedReceiptModal && selectedClearance?.feeReceiptUrl && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[250] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 shrink-0">
+              <h3 className="font-headline-sm font-bold text-slate-800 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-primary" />
+                Student Fee Receipt Preview
+              </h3>
+              <button 
+                onClick={() => setShowUploadedReceiptModal(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 transition-colors text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4 sm:p-6 bg-slate-100/60 flex-1 overflow-auto flex justify-center items-center min-h-[50vh]">
+              {selectedClearance.feeReceiptUrl.match(/\.(jpeg|jpg|gif|png)$/i) ? (
+                <img src={selectedClearance.feeReceiptUrl} alt="Receipt" className="max-w-full max-h-full object-contain rounded-lg shadow-sm" />
+              ) : (
+                <iframe src={selectedClearance.feeReceiptUrl} className="w-full h-full min-h-[60vh] rounded-lg border border-slate-200 bg-white" title="Receipt Document" />
+              )}
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0 gap-3">
+              <a 
+                href={selectedClearance.feeReceiptUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="px-5 py-2.5 bg-blue-50 text-blue-700 font-label-md font-bold rounded-xl hover:bg-blue-100 transition-colors border border-blue-200 shadow-sm inline-flex items-center gap-2"
+              >
+                <FileText className="w-4 h-4" /> Open in New Tab
+              </a>
+              <button 
+                type="button"
+                onClick={() => setShowUploadedReceiptModal(false)}
+                className="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Confirm Approve Modal */}
       {showConfirmPopup && (
         <div className="fixed inset-0 bg-primary/40 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
@@ -2877,8 +3582,11 @@ export default function DepartmentDashboard() {
           student={{
             name: selectedClearance.student.name,
             studentId: selectedClearance.student.studentId,
-            program: selectedClearance.student.program
+            program: selectedClearance.programType || selectedClearance.student.program || 'B.Tech',
+            department: selectedClearance.department || selectedClearance.student.department,
+            hostel: selectedClearance.presentHostel || selectedClearance.student.hostel
           }}
+          clearanceData={selectedClearance}
           onClose={() => setShowCertificate(false)}
         />
       )}

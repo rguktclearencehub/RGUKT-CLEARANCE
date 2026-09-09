@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, EyeOff, ArrowRight, AlertCircle } from 'lucide-react';
+import { Mail, Lock, EyeOff, Eye, ArrowRight, AlertCircle } from 'lucide-react';
 import { auth, googleProvider, db } from '../firebase';
 import { signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider } from 'firebase/auth';
 import { doc, getDoc, writeBatch, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
@@ -29,6 +29,7 @@ export default function Login() {
   const [loginType, setLoginType] = useState<'student' | 'department'>('student');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showDeptAlert, setShowDeptAlert] = useState(false);
@@ -282,7 +283,7 @@ export default function Login() {
                     <Mail className="w-4 h-4" />
                   </div>
                   <input 
-                    className="block w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg font-body-sm text-sm text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-[#5b21b6] focus:border-[#5b21b6] transition-colors bg-white outline-none" 
+                    className="block w-full pl-9 pr-3 py-2 border border-outline-variant rounded-lg font-body-sm text-sm text-on-surface placeholder-outline focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors bg-white outline-none" 
                     id="email" 
                     placeholder={loginType === 'student' ? "student@university.edu" : "library@university.edu"} 
                     required 
@@ -300,16 +301,19 @@ export default function Login() {
                     <Lock className="w-4 h-4" />
                   </div>
                   <input 
-                    className="block w-full pl-9 pr-9 py-2 border border-slate-200 rounded-lg font-body-sm text-sm text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-[#5b21b6] focus:border-[#5b21b6] transition-colors bg-white outline-none" 
+                    className="block w-full pl-9 pr-9 py-2 border border-outline-variant rounded-lg font-body-sm text-sm text-on-surface placeholder-outline focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors bg-white outline-none" 
                     id="password" 
                     placeholder="••••••••" 
                     required 
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
-                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center cursor-pointer text-slate-400 hover:text-[#5b21b6] transition-colors">
-                    <EyeOff className="w-4 h-4" />
+                  <div 
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center cursor-pointer text-slate-400 hover:text-primary transition-colors"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                   </div>
                 </div>
               </div>

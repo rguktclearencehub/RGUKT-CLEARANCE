@@ -340,6 +340,29 @@ export const fetchDetailedStudentDues = async (
     }
   });
 
+  const getDeptFlowRank = (name: string): number => {
+    const d = (name || '').toLowerCase().trim();
+    if (d.includes('hostel')) return 1;
+    if (d === 'dsw') return 2;
+    if (d === 'sports') return 3;
+    if (d.includes('physics')) return 4;
+    if (d.includes('chemistry')) return 5;
+    if (d.includes('biology')) return 6;
+    if (d.includes('lab') || d.includes('technician')) return 7;
+    if (d === 'coe') return 8;
+    if (d.includes('hod')) return 9;
+    if (d.includes('library')) return 10;
+    if (d.includes('it infra') || d.includes('network')) return 11;
+    if (d.includes('scholarship')) return 12;
+    if (d === 'fo' || d.includes('finance') || d.includes('account')) return 13;
+    if (d === 'ao') return 14;
+    if (d.includes('director')) return 15;
+    if (d.includes('dean')) return 16;
+    return 99;
+  };
+
+  groups.sort((a, b) => getDeptFlowRank(a.department) - getDeptFlowRank(b.department));
+
   const grandTotal = groups.reduce((sum, g) => sum + g.subtotal, 0);
   return { groups, grandTotal };
 };
@@ -1001,6 +1024,46 @@ export const uploadNdcToDrive = async (
   throw new Error('Google Drive upload service is currently unavailable. Ensure Google Drive authorization or Apps Script URL is set.');
 };
 
+export const formatStudentDepartment = (
+  rawDept?: string,
+  program?: string,
+  courseType?: string,
+  pucCourseType?: string
+): string => {
+  const isBTech = (program || '').trim().toLowerCase().includes('b.tech') || (program || '').trim().toLowerCase().includes('btech');
+  
+  // Clean candidate strings to check for branch matches
+  const cleanCandidates = [courseType, rawDept].filter(c => c && typeof c === 'string' && c.trim().length > 0) as string[];
+  
+  for (const cand of cleanCandidates) {
+    const cUpper = cand.trim().toUpperCase();
+    if (cUpper === 'CSE' || cUpper.includes('COMPUTER')) return 'Computer Science & Engineering';
+    if (cUpper === 'ECE' || cUpper.includes('ELECTRONICS & COMM') || cUpper.includes('ELECTRONICS AND COMM') || cUpper.includes('COMMUNICATION')) return 'Electronics & Communication Engineering';
+    if (cUpper === 'EEE' || cUpper.includes('ELECTRICAL')) return 'Electrical & Electronics Engineering';
+    if (cUpper === 'MECH' || cUpper === 'ME' || cUpper.includes('MECHANICAL')) return 'Mechanical Engineering';
+    if (cUpper === 'CIVIL' || cUpper === 'CE' || cUpper.includes('CIVIL')) return 'Civil Engineering';
+    if (cUpper === 'CHEM' || cUpper === 'CHE' || cUpper.includes('CHEMICAL')) return 'Chemical Engineering';
+    if (cUpper === 'MME' || cUpper.includes('METALLURG') || cUpper.includes('MATERIALS')) return 'Metallurgical & Materials Engineering';
+    if (cUpper === 'MPC') return 'Pre-University Course (MPC)';
+    if (cUpper === 'MBIPC' || cUpper.includes('BIO')) return 'Pre-University Course (MBiPC)';
+  }
+
+  if (!isBTech) {
+    const pucType = (pucCourseType || courseType || rawDept || '').toUpperCase();
+    if (pucType === 'MBIPC' || pucType.includes('BIO')) return 'Pre-University Course (MBiPC)';
+    return 'Pre-University Course (MPC)';
+  }
+
+  // If a specific non-generic department string was supplied, return it
+  const nonGeneric = cleanCandidates.find(c => {
+    const u = c.toUpperCase();
+    return u !== 'B.TECH' && u !== 'BTECH' && u !== 'PUC' && u !== 'UNDEFINED' && u !== 'NULL';
+  });
+  if (nonGeneric) return nonGeneric;
+
+  return isBTech ? 'Engineering Department' : 'Pre-University Course (MPC)';
+};
+
 /**
  * Generate Official Vector No Due Certificate (NDC) PDF matching RGUKT credentials,
  * university branding, digital seals, and clearance verification.
@@ -1030,6 +1093,15 @@ export const generateNDCPdfBlob = async (
   });
 
   const certNumber = `NDC-RGUKT-${new Date().getFullYear()}-${(studentData.studentId || 'GEN').toUpperCase()}`;
+
+  const resolvedProgram = clearanceData?.programType || studentData.program || 'B.Tech';
+  const resolvedBranch = formatStudentDepartment(
+    studentData.department,
+    resolvedProgram,
+    clearanceData?.courseType || studentData.department,
+    clearanceData?.pucCourseType
+  );
+  const resolvedHostel = studentData.hostel || clearanceData?.presentHostel || 'Campus Residence';
 
   // Double Decorative Border
   doc.setDrawColor(176, 58, 46); // #b03a2e Maroon
@@ -1145,18 +1217,18 @@ export const generateNDCPdfBlob = async (
   doc.setFont('helvetica', 'normal');
   doc.text('Program:', 20, 96);
   doc.setFont('helvetica', 'bold');
-  doc.text(studentData.program || 'B.Tech (Four Year Program)', 50, 96);
+  doc.text(resolvedProgram, 50, 96);
 
   // Col 2
   doc.setFont('helvetica', 'normal');
   doc.text('Department:', 110, 80);
   doc.setFont('helvetica', 'bold');
-  doc.text(studentData.department || 'Computer Science & Engineering', 140, 80);
+  doc.text(resolvedBranch, 140, 80);
 
   doc.setFont('helvetica', 'normal');
   doc.text('Hostel / Residence:', 110, 88);
   doc.setFont('helvetica', 'bold');
-  doc.text(studentData.hostel || 'Campus Residence', 140, 88);
+  doc.text(resolvedHostel, 140, 88);
 
   doc.setFont('helvetica', 'normal');
   doc.text('Clearance Status:', 110, 96);
@@ -1170,7 +1242,7 @@ export const generateNDCPdfBlob = async (
   doc.setFontSize(9.5);
   doc.setTextColor(30, 41, 59);
 
-  const certText1 = `This is to certify that ${studentData.name.toUpperCase()} (ID: ${studentData.studentId.toUpperCase()}) enrolled in the ${studentData.program || 'B.Tech'} program has successfully reconciled and fulfilled all institutional clearance requirements across all academic departments, campus laboratories, student hostels, central library, sports, and administrative sections of Rajiv Gandhi University of Knowledge Technologies.`;
+  const certText1 = `This is to certify that ${(studentData.name || 'STUDENT').toUpperCase()} (ID: ${(studentData.studentId || '').toUpperCase()}) enrolled in the ${resolvedProgram} program has successfully reconciled and fulfilled all institutional clearance requirements across all academic departments, campus laboratories, student hostels, central library, sports, and administrative sections of Rajiv Gandhi University of Knowledge Technologies.`;
   const splitText1 = doc.splitTextToSize(certText1, 178);
   doc.text(splitText1, 16, curY);
   curY += splitText1.length * 5.2 + 2;
@@ -1182,67 +1254,75 @@ export const generateNDCPdfBlob = async (
 
   // Helper to map department names to official authority titles
   const getDepartmentAuthority = (deptName: string): string => {
-    const d = (deptName || '').toLowerCase();
-    if (d.includes('hostel')) return 'Chief Warden';
-    if (d.includes('library')) return 'Chief Librarian';
-    if (d.includes('sports') || d.includes('dsw')) return 'Dean of Student Welfare';
-    if (d.includes('fo') || d.includes('finance') || d.includes('account')) return 'Finance Officer';
-    if (d.includes('chemistry')) return 'Chemistry Lab In-Charge';
-    if (d.includes('physics')) return 'Physics Lab In-Charge';
-    if (d.includes('biology')) return 'Biology Lab In-Charge';
-    if (d.includes('lab')) return 'Laboratory In-Charge';
-    if (d.includes('it infra') || d.includes('network')) return 'Network Administrator';
-    if (d.includes('scholarship')) return 'Scholarship Officer';
-    if (d.includes('hod')) return 'Head of Department (HOD)';
-    if (d.includes('coe') || d.includes('exam')) return 'Controller of Examinations';
-    if (d.includes('ao') || d.includes('admin')) return 'Administrative Officer';
-    if (d.includes('director')) return 'Campus Director';
-    if (d.includes('dean')) return 'Dean of Academics';
+    const d = (deptName || '').toLowerCase().trim();
+    if (d === 'hostel' || d.includes('hostel')) return 'Chief Warden';
+    if (d === 'dsw') return 'Dean of Student Welfare';
+    if (d === 'sports') return 'Sports Officer';
+    if (d === 'physics lab') return 'Physics Lab In-Charge';
+    if (d === 'chemistry lab') return 'Chemistry Lab In-Charge';
+    if (d === 'biology lab') return 'Biology Lab In-Charge';
+    if (d.startsWith('lab technician') || d === 'engg labs') return 'Lab Technician / In-Charge';
+    if (d === 'coe') return 'Controller of Examinations';
+    if (d.startsWith('hod')) return 'Head of Department (HOD)';
+    if (d === 'library') return 'Chief Librarian';
+    if (d === 'it infra') return 'Network Administrator';
+    if (d === 'scholarship office' || d.includes('scholarship')) return 'Scholarship Officer';
+    if (d === 'fo' || d.includes('finance') || d.includes('account')) return 'Finance Officer';
+    if (d === 'ao') return 'Administrative Officer';
+    if (d === 'director') return 'Campus Director';
+    if (d === 'dean of academics' || d.includes('dean')) return 'Dean of Academics';
     return 'Department Authority';
   };
 
-  // Determine real departments from clearanceData
-  let clearanceList: any[] = [];
-  if (clearanceData?.departmentClearances && Array.isArray(clearanceData.departmentClearances) && clearanceData.departmentClearances.length > 0) {
-    clearanceList = clearanceData.departmentClearances;
-  } else if (clearanceData?.requestId || clearanceData?.id) {
-    const reqId = clearanceData.requestId || clearanceData.id;
-    try {
-      const dcSnap = await getDocs(query(collection(db, 'departmentClearances'), where('requestId', '==', reqId)));
-      if (!dcSnap.empty) {
-        clearanceList = dcSnap.docs.map((d: any) => d.data());
-      }
-    } catch (err) {
-      console.warn('Could not load real department clearances for NDC:', err);
-    }
+  const getDepartmentFormalState = (deptName: string): string => {
+    const d = (deptName || '').toLowerCase().trim();
+    if (d === 'hostel' || d.includes('hostel')) return 'CLEARED - Room Vacated & Nil Dues';
+    if (d === 'dsw') return 'CLEARED - Welfare Reconciled';
+    if (d === 'sports') return 'CLEARED - No Equipment Pending';
+    if (d.includes('lab') || d.startsWith('lab technician')) return 'CLEARED - No Breakages / Dues';
+    if (d === 'coe') return 'CLEARED - All Semesters Passed';
+    if (d.startsWith('hod')) return 'CLEARED - Academic Clearance Given';
+    if (d === 'library') return 'CLEARED - Zero Books / Fine Due';
+    if (d === 'it infra') return 'CLEARED - Systems Reconciled';
+    if (d === 'scholarship office' || d.includes('scholarship')) return 'CLEARED - Accounts Balanced';
+    if (d === 'fo' || d.includes('finance') || d.includes('account')) return 'CLEARED - Rs. 0.00 Outstanding';
+    if (d === 'ao') return 'CLEARED - Admin Verified';
+    if (d === 'director') return 'CLEARED - Approved by Director';
+    if (d === 'dean of academics' || d.includes('dean')) return 'CLEARED - Academic Clearance';
+    return 'CLEARED - All Requirements Met';
+  };
+
+  const isBTech = (resolvedProgram || '').trim().toLowerCase().includes('b.tech') || (resolvedProgram || '').trim().toLowerCase().includes('btech');
+  const branchAbbr = clearanceData?.courseType || (studentData.department && studentData.department.length <= 6 ? studentData.department : '');
+  const isMpc = clearanceData?.pucCourseType === 'MPC' || (!isBTech && (clearanceData?.courseType === 'MPC' || branchAbbr === 'MPC'));
+
+  let deptsInOrder = isBTech ? [
+    'Hostel', 'DSW', 'Sports', 'Physics Lab', 'Chemistry Lab', 'Biology Lab', 'Engg Labs',
+    'COE', 'HOD', 'Library', 'IT Infra', 'Scholarship Office',
+    'FO', 'AO', 'Director', 'Dean of Academics'
+  ] : [
+    'Hostel', 'DSW', 'Sports', 'Physics Lab', 'Chemistry Lab', 'Biology Lab',
+    'COE', 'Library', 'IT Infra', 'Scholarship Office',
+    'FO', 'AO', 'Director', 'Dean of Academics'
+  ];
+
+  if (isMpc) {
+    deptsInOrder = deptsInOrder.filter(d => d !== 'Biology Lab');
   }
 
-  let tableData: string[][] = [];
-  if (clearanceList.length > 0) {
-    tableData = clearanceList.map((dc: any, idx: number) => {
-      const deptName = dc.departmentName || dc.department || `Department ${idx + 1}`;
-      const auth = getDepartmentAuthority(deptName);
-      const isApproved = dc.status === 'APPROVED';
-      const state = isApproved ? 'CLEARED - All Requirements Met' : 'CLEARED (Zero Dues)';
-      return [deptName, auth, state, 'VERIFIED ONLINE'];
-    });
-  } else {
-    // Default university sections for preview / mock sample
-    tableData = [
-      ['Academic Section', 'HOD / Academic Dean', 'CLEARED - All Requirements Met', 'VERIFIED ONLINE'],
-      ['Central Library', 'Chief Librarian', 'CLEARED - Zero Books / Fine Due', 'VERIFIED ONLINE'],
-      ['Hostel & Mess Administration', 'Chief Warden', 'CLEARED - Room Vacated & Dues Paid', 'VERIFIED ONLINE'],
-      ['Student Welfare & Sports (DSW)', 'Dean of Student Welfare', 'CLEARED - No Equipment Pending', 'VERIFIED ONLINE'],
-      ['IT Infrastructure & Systems', 'Network Admin', 'CLEARED - Lab Systems Reconciled', 'VERIFIED ONLINE'],
-      ['Engineering Laboratories', 'Lab In-Charge', 'CLEARED - No Breakages or Dues', 'VERIFIED ONLINE'],
-      ['Scholarship & Accounts', 'Scholarship Officer', 'CLEARED - Accounts Balanced', 'VERIFIED ONLINE'],
-      ['Finance Office (Central Treasury)', 'Finance Officer', 'CLEARED - Rs. 0.00 Outstanding', 'VERIFIED ONLINE']
-    ];
-  }
+  const tableData: string[][] = deptsInOrder.map(dept => {
+    let displayName = dept;
+    if (dept === 'HOD') displayName = branchAbbr ? `HOD ${branchAbbr}` : 'HOD';
+    if (dept === 'Engg Labs') displayName = branchAbbr ? `Lab Technician ${branchAbbr}` : 'Engineering Labs';
+
+    const auth = getDepartmentAuthority(displayName);
+    const state = getDepartmentFormalState(displayName);
+    return [displayName, auth, state, 'VERIFIED ONLINE'];
+  });
 
   const isCompact = tableData.length > 8;
-  const fontSize = isCompact ? (tableData.length > 12 ? 6.2 : 6.8) : 7.2;
-  const cellPadding = isCompact ? (tableData.length > 12 ? 1.2 : 1.6) : 2;
+  const fontSize = tableData.length > 12 ? 5.8 : (isCompact ? 6.4 : 7.2);
+  const cellPadding = tableData.length > 12 ? 0.9 : (isCompact ? 1.3 : 1.8);
 
   autoTable(doc, {
     startY: curY,

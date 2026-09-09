@@ -50,15 +50,7 @@ const getDepartmentSequence = (request: any) => {
 const MOCK_SUBMISSION_TEMPLATE = `
   <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 0; border: 1px solid #dcfce7; border-radius: 12px; background-color: #ffffff; overflow: hidden; box-shadow: 0 4px 15px rgba(22, 163, 74, 0.1);">
     <div style="background: linear-gradient(135deg, #22c55e, #16a34a); padding: 24px 20px; text-align: center; color: white;">
-      <table width="72" height="72" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 20px auto; background-color: white; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-        <tr>
-          <td align="center" valign="middle" style="height: 72px;">
-            <div style="width:72px; height:72px; line-height:72px; text-align:center; border-radius:50%; font-size:40px; color:#16a34a; font-weight:bold;">
-              &#10003;
-            </div>
-          </td>
-        </tr>
-      </table>
+      <img src="https://rguktclearance.vercel.app/logo.png" alt="RGUKT Logo" width="80" style="width: 80px; max-width: 100%; height: auto; margin-bottom: 16px; display: inline-block;" />
       <h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">Application Submitted!</h2>
     </div>
     
@@ -100,14 +92,8 @@ const MOCK_SUBMISSION_TEMPLATE = `
 
 const MOCK_FO_DUES_TEMPLATE = `
   <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
-    <div style="background: linear-gradient(135deg, #ef4444, #dc2626); padding: 24px 20px; text-align: center; color: white;">
-      <table width="72" height="72" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 20px auto; background-color: white; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-        <tr>
-          <td align="center" valign="middle" style="height: 72px;">
-            <img src="https://img.icons8.com/ios-filled/50/dc2626/bill.png" width="36" height="36" style="display: block; border: 0;" alt="Invoice" />
-          </td>
-        </tr>
-      </table>
+    <div style="background: linear-gradient(135deg, #f97316, #ea580c); padding: 24px 20px; text-align: center; color: white;">
+      <img src="https://rguktclearance.vercel.app/logo.png" alt="RGUKT Logo" width="80" style="width: 80px; max-width: 100%; height: auto; margin-bottom: 16px; display: inline-block;" />
       <h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">Pending Dues Alert</h2>
     </div>
     <div style="padding: 30px;">
@@ -115,32 +101,32 @@ const MOCK_FO_DUES_TEMPLATE = `
         Hello <strong>John Doe</strong>,<br><br>
         Your clearance application has reached the <strong>FO (Accounts) Office</strong>. However, you have pending dues that must be cleared before final approval.
       </p>
-      <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
-        <h3 style="margin: 0 0 16px 0; color: #991b1b; font-size: 16px;">Dues Breakdown</h3>
+      <div style="background-color: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+        <h3 style="margin: 0 0 16px 0; color: #9a3412; font-size: 16px;">Dues Breakdown</h3>
         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size: 14px; border-collapse: collapse;">
           <thead>
             <tr>
-              <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fca5a5; color: #7f1d1d; text-align: left;">Department</th>
-              <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fca5a5; color: #7f1d1d; text-align: left;">Reason</th>
-              <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fca5a5; color: #7f1d1d; text-align: right;">Amount</th>
+              <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fdba74; color: #7c2d12; text-align: left;">Department</th>
+              <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fdba74; color: #7c2d12; text-align: left;">Reason</th>
+              <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fdba74; color: #7c2d12; text-align: right;">Amount</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155;"><strong>Hostel</strong></td>
               <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Damaged Cot</td>
-              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #ef4444; font-weight: 600; text-align: right;">₹500</td>
+              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #ea580c; font-weight: 600; text-align: right;">₹500</td>
             </tr>
             <tr>
               <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155;"><strong>Library</strong></td>
               <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #64748b;">Unreturned Book (Physics Vol. 1)</td>
-              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #ef4444; font-weight: 600; text-align: right;">₹250</td>
+              <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #ea580c; font-weight: 600; text-align: right;">₹250</td>
             </tr>
           </tbody>
           <tfoot>
             <tr>
               <td colspan="2" style="padding: 16px 12px 0 12px; color: #334155; font-weight: bold; text-align: right; font-size: 16px;">Grand Total:</td>
-              <td style="padding: 16px 12px 0 12px; color: #ef4444; font-weight: bold; text-align: right; font-size: 18px;">₹750</td>
+              <td style="padding: 16px 12px 0 12px; color: #ea580c; font-weight: bold; text-align: right; font-size: 18px;">₹750</td>
             </tr>
           </tfoot>
         </table>
@@ -151,7 +137,7 @@ const MOCK_FO_DUES_TEMPLATE = `
         </p>
       </div>
       <div style="text-align: center;">
-        <a href="https://rguktclearance.vercel.app/student/dashboard" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">Upload Receipt</a>
+        <a href="https://rguktclearance.vercel.app/student/dashboard" style="display: inline-block; background-color: #f97316; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(249, 115, 22, 0.2);">Upload Receipt</a>
       </div>
     </div>
     <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
@@ -166,6 +152,7 @@ const MOCK_FO_DUES_TEMPLATE = `
 const MOCK_COMPLETION_TEMPLATE = `
   <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f9fafb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
     <div style="background: linear-gradient(135deg, #16a34a, #15803d); padding: 30px 20px; text-align: center;">
+      <img src="https://rguktclearance.vercel.app/logo.png" alt="RGUKT Logo" width="80" style="width: 80px; max-width: 100%; height: auto; margin-bottom: 16px; display: inline-block;" />
       <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Clearance Application Completed!</h1>
     </div>
     <div style="padding: 30px; background-color: white;">
@@ -190,6 +177,59 @@ const MOCK_COMPLETION_TEMPLATE = `
         <p style="color: #94a3b8; font-size: 11px; margin: 10px 0 0 0;">
           (Click the button above to directly download your official certificate)
         </p>
+      </div>
+    </div>
+    <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+      <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+        RGUKT Clearance Hub &copy; 2026<br>
+        This is an automated message, please do not reply.
+      </p>
+    </div>
+  </div>
+`;
+
+const MOCK_REJECTED_TEMPLATE = `
+  <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; border: 1px solid #fecaca; border-radius: 12px; background-color: #ffffff; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+    <div style="background: linear-gradient(135deg, #ef4444, #dc2626); padding: 24px 20px; text-align: center; color: white;">
+      <img src="https://rguktclearance.vercel.app/logo.png" alt="RGUKT Logo" width="80" style="width: 80px; max-width: 100%; height: auto; margin-bottom: 16px; display: inline-block;" />
+      <h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">Application Rejected</h2>
+    </div>
+    <div style="padding: 30px;">
+      <p style="color: #334155; font-size: 16px; line-height: 1.6; margin-top: 0; margin-bottom: 24px;">
+        Hello <strong>John Doe</strong>,<br><br>
+        Your clearance application has been <strong>rejected</strong> by the <strong>Computer Science & Engineering</strong> department.
+      </p>
+      <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+        <h3 style="margin: 0 0 16px 0; color: #991b1b; font-size: 16px; border-bottom: 1px solid #fca5a5; padding-bottom: 10px;">Rejection Details</h3>
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size: 14px; text-align: left;">
+          <tr>
+            <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600; width: 120px;">Student Name:</td>
+            <td style="padding: 8px 0; color: #991b1b;">John Doe</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600;">Student ID:</td>
+            <td style="padding: 8px 0; color: #991b1b;">R240001</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600;">Program:</td>
+            <td style="padding: 8px 0; color: #991b1b;">B.Tech</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600;">Department:</td>
+            <td style="padding: 8px 0; color: #991b1b;">Computer Science & Engineering</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600;">Date:</td>
+            <td style="padding: 8px 0; color: #991b1b;">${new Date().toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600; vertical-align: top;">Reason:</td>
+            <td style="padding: 8px 0; color: #991b1b;">Student has pending dues or issues. (Sample Reason)</td>
+          </tr>
+        </table>
+      </div>
+      <div style="text-align: center;">
+        <a href="https://rguktclearance.vercel.app/student/dashboard" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">View Details</a>
       </div>
     </div>
     <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
@@ -410,7 +450,7 @@ export default function AdminDashboard() {
 
   const [testMailModal, setTestMailModal] = useState<{
     open: boolean;
-    templateType: 'submission' | 'fo_dues' | 'completed' | null;
+    templateType: 'submission' | 'fo_dues' | 'completed' | 'rejected' | null;
     title: string;
   }>({
     open: false,
@@ -422,7 +462,7 @@ export default function AdminDashboard() {
   const [isSendingTestMail, setIsSendingTestMail] = useState(false);
   const [testMailFeedback, setTestMailFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  const handleOpenTestMail = (type: 'submission' | 'fo_dues' | 'completed', title: string) => {
+  const handleOpenTestMail = (type: 'submission' | 'fo_dues' | 'completed' | 'rejected', title: string) => {
     setTestMailModal({ open: true, templateType: type, title });
     setTestMailFeedback(null);
   };
@@ -444,7 +484,7 @@ export default function AdminDashboard() {
       const studentName = targetReq ? targetReq.studentName : (testMailModal.templateType === 'completed' ? 'Sriram Yaddanapudi' : 'John Doe');
       const studentId = targetReq ? (targetReq.actualStudentId || targetReq.studentId) : (testMailModal.templateType === 'completed' ? 'R200001' : 'R240001');
       const studentProgram = targetReq ? (targetReq.programType || 'B.Tech') : 'B.Tech';
-      const studentDept = targetReq ? (targetReq.department || (studentProgram.includes('PUC') ? 'Pre-University Course' : 'Computer Science & Engineering')) : 'Computer Science & Engineering';
+      const studentDept = targetReq ? (targetReq.courseType || targetReq.department || (studentProgram.includes('PUC') ? 'Pre-University Course' : '')) : 'Computer Science & Engineering';
       const studentHostel = targetReq ? (targetReq.presentHostel || 'Campus Residence') : 'Campus Residence';
 
       let htmlMessage = '';
@@ -525,7 +565,7 @@ export default function AdminDashboard() {
 
         htmlMessage = `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
-            <div style="background: linear-gradient(135deg, #ef4444, #dc2626); padding: 24px 20px; text-align: center; color: white;">
+            <div style="background: linear-gradient(135deg, #f97316, #ea580c); padding: 24px 20px; text-align: center; color: white;">
               <h2 style="margin: 0; font-size: 24px; font-weight: 700;">Pending Dues Alert</h2>
             </div>
             <div style="padding: 30px;">
@@ -534,7 +574,7 @@ export default function AdminDashboard() {
                 Your clearance application has pending dues of <strong>Rs. ${grandTotal.toLocaleString('en-IN')}</strong> that must be settled.
               </p>
               <div style="text-align: center; margin: 25px 0;">
-                <a href="${downloadLink}" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">
+                <a href="${downloadLink}" style="display: inline-block; background-color: #f97316; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(249, 115, 22, 0.2);">
                   ⬇ Download Official Statement (PDF)
                 </a>
               </div>
@@ -574,7 +614,8 @@ export default function AdminDashboard() {
         htmlMessage = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f9fafb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
             <div style="background: linear-gradient(135deg, #16a34a, #15803d); padding: 30px 20px; text-align: center;">
-              <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Clearance Application Completed!</h1>
+              <img src="https://rguktclearance.vercel.app/logo.png" alt="RGUKT Logo" width="80" style="width: 80px; max-width: 100%; height: auto; margin-bottom: 16px; display: inline-block;" />
+      <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Clearance Application Completed!</h1>
             </div>
             <div style="padding: 30px; background-color: white;">
               <p style="color: #334155; font-size: 16px; margin-bottom: 20px;">Dear <strong>${studentName}</strong>,</p>
@@ -615,7 +656,66 @@ export default function AdminDashboard() {
             </div>
           </div>
         `;
+      } else if (testMailModal.templateType === 'rejected') {
+        htmlMessage = `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; border: 1px solid #fecaca; border-radius: 12px; background-color: #ffffff; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+            <div style="background: linear-gradient(135deg, #ef4444, #dc2626); padding: 24px 20px; text-align: center; color: white;">
+              <img src="https://rguktclearance.vercel.app/logo.png" alt="RGUKT Logo" width="80" style="width: 80px; max-width: 100%; height: auto; margin-bottom: 16px; display: inline-block;" />
+      <h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">Application Rejected</h2>
+            </div>
+            <div style="padding: 30px;">
+              <p style="color: #334155; font-size: 16px; line-height: 1.6; margin-top: 0; margin-bottom: 24px;">
+                Hello <strong>${studentName}</strong>,<br><br>
+                Your clearance application has been <strong>rejected</strong> by the <strong>${studentDept}</strong> department.
+              </p>
+              <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                <h3 style="margin: 0 0 16px 0; color: #991b1b; font-size: 16px; border-bottom: 1px solid #fca5a5; padding-bottom: 10px;">Rejection Details</h3>
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size: 14px; text-align: left;">
+                  <tr>
+                    <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600; width: 120px;">Student Name:</td>
+                    <td style="padding: 8px 0; color: #991b1b;">${studentName}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600;">Student ID:</td>
+                    <td style="padding: 8px 0; color: #991b1b;">${studentId}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600;">Program:</td>
+                    <td style="padding: 8px 0; color: #991b1b;">${studentProgram}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600;">Department:</td>
+                    <td style="padding: 8px 0; color: #991b1b;">${studentDept}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600;">Date:</td>
+                    <td style="padding: 8px 0; color: #991b1b;">${new Date().toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #7f1d1d; font-weight: 600; vertical-align: top;">Reason:</td>
+                    <td style="padding: 8px 0; color: #991b1b;">Student has pending dues or issues. (Sample Reason)</td>
+                  </tr>
+                </table>
+              </div>
+              <div style="text-align: center;">
+                <a href="https://rguktclearance.vercel.app/student/dashboard" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">View Details</a>
+              </div>
+            </div>
+            <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+              <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                RGUKT Clearance Hub &copy; ${new Date().getFullYear()}<br>
+                This is an official automated notification.
+              </p>
+            </div>
+          </div>
+        `;
       }
+
+      let emailSubject = "Notification - RGUKT Clearance";
+      if (testMailModal.templateType === 'submission') emailSubject = "Application Submitted - RGUKT Clearance";
+      else if (testMailModal.templateType === 'fo_dues') emailSubject = "Pending Dues Alert - RGUKT Clearance";
+      else if (testMailModal.templateType === 'completed') emailSubject = "Clearance Application Completed! - RGUKT Clearance";
+      else if (testMailModal.templateType === 'rejected') emailSubject = "Clearance Application Rejected - RGUKT Clearance";
 
       await emailjs.send(
         EMAILJS_SERVICE_ID,
@@ -623,6 +723,7 @@ export default function AdminDashboard() {
         {
           to_name: recipientName,
           to_email: testRecipientEmail,
+          subject: emailSubject,
           html_message: htmlMessage
         },
         EMAILJS_PUBLIC_KEY
@@ -756,29 +857,23 @@ export default function AdminDashboard() {
 
               const htmlMessage = `
                 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
-                  <div style="background: linear-gradient(135deg, #ef4444, #dc2626); padding: 24px 20px; text-align: center; color: white;">
-                    <table width="72" height="72" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 20px auto; background-color: white; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-                      <tr>
-                        <td align="center" valign="middle" style="height: 72px;">
-                          <img src="https://img.icons8.com/ios-filled/50/dc2626/bill.png" width="36" height="36" style="display: block; border: 0;" alt="Invoice" />
-                        </td>
-                      </tr>
-                    </table>
-                    <h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">Pending Dues Alert</h2>
+                  <div style="background: linear-gradient(135deg, #f97316, #ea580c); padding: 24px 20px; text-align: center; color: white;">
+                    <img src="https://rguktclearance.vercel.app/logo.png" alt="RGUKT Logo" width="80" style="width: 80px; max-width: 100%; height: auto; margin-bottom: 16px; display: inline-block;" />
+      <h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">Pending Dues Alert</h2>
                   </div>
                   <div style="padding: 30px;">
                     <p style="color: #334155; font-size: 16px; line-height: 1.6; margin-top: 0; margin-bottom: 24px;">
                       Hello <strong>${studentName}</strong>,<br><br>
                       Your clearance application has reached the <strong>FO (Accounts) Office</strong>. However, you have pending dues that must be cleared before final approval.
                     </p>
-                    <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
-                      <h3 style="margin: 0 0 16px 0; color: #991b1b; font-size: 16px;">Dues Breakdown</h3>
+                    <div style="background-color: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                      <h3 style="margin: 0 0 16px 0; color: #9a3412; font-size: 16px;">Dues Breakdown</h3>
                       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size: 14px; border-collapse: collapse;">
                         <thead>
                           <tr>
-                            <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fca5a5; color: #7f1d1d; text-align: left;">Department</th>
-                            <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fca5a5; color: #7f1d1d; text-align: left;">Reason</th>
-                            <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fca5a5; color: #7f1d1d; text-align: right;">Amount</th>
+                            <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fdba74; color: #7c2d12; text-align: left;">Department</th>
+                            <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fdba74; color: #7c2d12; text-align: left;">Reason</th>
+                            <th style="padding: 0 12px 12px 12px; border-bottom: 2px solid #fdba74; color: #7c2d12; text-align: right;">Amount</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -787,7 +882,7 @@ export default function AdminDashboard() {
                         <tfoot>
                           <tr>
                             <td colspan="2" style="padding: 16px 12px 0 12px; color: #334155; font-weight: bold; text-align: right; font-size: 16px;">Grand Total:</td>
-                            <td style="padding: 16px 12px 0 12px; color: #ef4444; font-weight: bold; text-align: right; font-size: 18px;">₹${req.totalFeeDue}</td>
+                            <td style="padding: 16px 12px 0 12px; color: #ea580c; font-weight: bold; text-align: right; font-size: 18px;">₹${req.totalFeeDue}</td>
                           </tr>
                         </tfoot>
                       </table>
@@ -798,7 +893,7 @@ export default function AdminDashboard() {
                       </p>
                     </div>
                     <div style="text-align: center;">
-                      <a href="https://rguktclearance.vercel.app/student/dashboard" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);">Upload Receipt</a>
+                      <a href="https://rguktclearance.vercel.app/student/dashboard" style="display: inline-block; background-color: #f97316; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 6px rgba(249, 115, 22, 0.2);">Upload Receipt</a>
                     </div>
                     ${pdfLinkHtml}
                   </div>
@@ -817,6 +912,7 @@ export default function AdminDashboard() {
                 {
                   to_name: studentName,
                   to_email: req.email,
+                  subject: "Pending Dues Alert - RGUKT Clearance",
                   html_message: htmlMessage
                 },
                 EMAILJS_PUBLIC_KEY
@@ -838,7 +934,7 @@ export default function AdminDashboard() {
                 name: studentName,
                 studentId: req.studentId || '',
                 program: req.programType || 'B.Tech',
-                department: req.department || '',
+                department: req.courseType || req.department || '',
                 hostel: req.presentHostel || ''
               },
               req
@@ -869,7 +965,8 @@ export default function AdminDashboard() {
               const htmlMessage = `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f9fafb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
                   <div style="background: linear-gradient(135deg, #16a34a, #15803d); padding: 30px 20px; text-align: center;">
-                    <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Clearance Application Completed!</h1>
+                    <img src="https://rguktclearance.vercel.app/logo.png" alt="RGUKT Logo" width="80" style="width: 80px; max-width: 100%; height: auto; margin-bottom: 16px; display: inline-block;" />
+      <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Clearance Application Completed!</h1>
                   </div>
                   <div style="padding: 30px; background-color: white;">
                     <p style="color: #334155; font-size: 16px; margin-bottom: 20px;">Dear <strong>${studentName}</strong>,</p>
@@ -917,6 +1014,7 @@ export default function AdminDashboard() {
                 {
                   to_name: studentName,
                   to_email: req.email,
+                  subject: "Clearance Application Completed! - RGUKT Clearance",
                   html_message: htmlMessage
                 },
                 EMAILJS_PUBLIC_KEY
@@ -1295,6 +1393,32 @@ export default function AdminDashboard() {
                           <Mail className="w-3.5 h-3.5" /> Send Test Mail & PDF
                         </button>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Application Rejected Template */}
+                  <div className="bg-surface rounded-2xl border border-surface-variant p-6 flex flex-col">
+                    <h4 className="font-headline-sm text-lg font-bold text-primary mb-2 flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-error" />
+                      Application Rejected
+                    </h4>
+                    <p className="font-body-sm text-on-surface-variant mb-6 text-sm">
+                      Sent automatically when a department rejects a student's clearance application, including the reason for rejection.
+                    </p>
+                    <div className="flex-1 bg-surface-container-lowest rounded-xl border border-outline-variant/30 overflow-hidden shadow-inner p-4 flex items-center justify-center">
+                      <div className="w-full max-w-md scale-[0.8] origin-top h-[600px] overflow-y-auto no-scrollbar shadow-xl rounded-xl border border-surface-variant"
+                           dangerouslySetInnerHTML={{ __html: MOCK_REJECTED_TEMPLATE }}>
+                      </div>
+                    </div>
+                    {/* Action Bar Below Template */}
+                    <div className="mt-4 pt-4 border-t border-surface-variant flex flex-wrap gap-2 items-center justify-between">
+                      <span className="text-xs text-on-surface-variant font-medium">Test Automation:</span>
+                      <button
+                        onClick={() => handleOpenTestMail('rejected', 'Application Rejected')}
+                        className="px-4 py-2 bg-error hover:bg-error/90 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Mail className="w-3.5 h-3.5" /> Send Test Mail
+                      </button>
                     </div>
                   </div>
                 </div>
